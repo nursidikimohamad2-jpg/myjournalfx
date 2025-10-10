@@ -1266,17 +1266,103 @@ function injectUrlBarUnder(areaEl, kind){
 }
 
 // inject URL bar bila ada drop zone
-injectUrlBarUnder(dropBefore, 'before');
-injectUrlBarUnder(dropAfter,  'after');
+function injectUrlBarUnder(areaEl, kind){
+  if(!areaEl) return;
+  const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
+  if (document.getElementById(id)) return; // sudah ada
 
-// Global paste: jika ada URL gambar di clipboard, muat ke area terakhir yang aktif
-window.addEventListener('paste', async (e)=>{
-  const t = (e.clipboardData || window.clipboardData)?.getData?.('text') || '';
-  if (isLikelyImageURL(t)){
-    const b64 = await urlToBase64Smart(t.trim());
+  // ambil kelas dari input angka agar tampilannya identik
+  const mimicClass =
+    (form?.entry_price?.className || editForm?.entry_price?.className) ||
+    'w-full rounded-xl border border-slate-300 bg-slate-50 text-slate-900 ' +
+    'px-3 py-2 text-sm placeholder-slate-500 focus:outline-none ' +
+    'focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
+    'dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'mt-2 flex items-center gap-2';
+
+  wrap.innerHTML = `
+    <input id="${id}" type="url"
+      placeholder="Tempel link gambar (https://… atau data:image/…)"
+      class="${mimicClass}" />
+    <button type="button"
+      class="h-[38px] px-3 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:ring-2 focus:ring-blue-500">
+      Muat
+    </button>
+  `;
+  areaEl.insertAdjacentElement('afterend', wrap);
+
+  const input = wrap.querySelector('input');
+  const btn   = wrap.querySelector('button');
+
+  const loader = async () => {
+    const url = (input.value||'').trim();
+    if (!isLikelyImageURL(url)) { alert('Masukkan URL file gambar (.png/.jpg/.webp) atau data:image/…'); input.focus(); return; }
+    const b64 = await urlToBase64Smart(url);
+    if (b64) setImagePreview(kind, b64);
+  };
+
+  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
+  btn.addEventListener('click', loader);
+
+  // agar paste/link diarahkan ke area ini
+  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
+
+  // samakan tinggi input jika ada referensi
+  const ref = form?.entry_price || editForm?.entry_price;
+  if (ref) {
+    const h = getComputedStyle(ref).height;
+    if (h && h !== 'auto') input.style.height = h;
+  }
+}
+
+
+// Paste global: dukung gambar langsung & link gambar (auto-load)
+window.addEventListener('paste', async (e) => {
+  const dt = e.clipboardData || window.clipboardData;
+  if (!dt) return;
+
+  // 1) Jika yang ditempel adalah GAMBAR (TradingView -> Salin gambar)
+  const items = dt.items || [];
+  for (const item of items) {
+    if (item.type && item.type.startsWith('image/')) {
+      const file = item.getAsFile?.();
+      if (file) {
+        const b64 = await fileToBase64(file);
+        if (b64) setImagePreview(lastImgKind, b64);
+        e.preventDefault();   // cegah tempel bitmap jadi teks
+        return;
+      }
+    }
+  }
+
+  // 2) Jika fokus di kolom URL kita, biarkan teks menempel lalu otomatis muat
+  const el = document.activeElement;
+  const isUrlInput = el && (el.id === 'editImgBeforeUrl' || el.id === 'editImgAfterUrl');
+  if (isUrlInput) {
+    // debounce ringan supaya tidak dobel request
+    clearTimeout(window.__urlPasteTimer__);
+    window.__urlPasteTimer__ = setTimeout(async () => {
+      const url = (el.value || '').trim();
+      if (isLikelyImageURL(url)) {
+        const kind = el.id === 'editImgBeforeUrl' ? 'before' : 'after';
+        const b64 = await urlToBase64Smart(url);
+        if (b64) setImagePreview(kind, b64);
+      }
+    }, 60);
+    return; // jangan preventDefault; biar teks masuk ke input
+  }
+
+  // 3) Fallback: jika clipboard berisi TEKS URL gambar & bukan di kolom URL
+  const text = dt.getData?.('text')?.trim() || '';
+  if (text && isLikelyImageURL(text)) {
+    const b64 = await urlToBase64Smart(text);
     if (b64) setImagePreview(lastImgKind, b64);
+    e.preventDefault();
   }
 });
+
 
 /* ===== Init ===== */
 (function init(){
