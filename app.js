@@ -452,58 +452,94 @@ function openSaveProjectModal(){
   setTimeout(()=>saveProjectName.focus(),50);
 }
 function closeSaveProjectModal(){ saveProjectModal.classList.add('hidden'); saveProjectModal.classList.remove('flex'); }
-/* ====== PROJECTS — STORAGE & EVENTS (SAFE PATCH) ====== */
-(function(){
-  // --- storage helper: definisikan hanya jika belum ada
-  const PROJ_KEY = 'rr_journal_projects_v1';
-  if (typeof window.loadProj !== 'function') {
-    window.loadProj = function(){
-      try { return JSON.parse(localStorage.getItem(PROJ_KEY) || '[]'); }
-      catch { return []; }
-    };
+/* ===== projects modal ===== */
+function renderProjects(){
+  const items = loadProj();
+  projectsList.innerHTML = '';
+  if(items.length===0){
+    projectsList.innerHTML = `<div class="text-slate-400">Belum ada project.</div>`;
+    return;
   }
-  if (typeof window.saveProj !== 'function') {
-    window.saveProj = function(items){
-      localStorage.setItem(PROJ_KEY, JSON.stringify(items));
-    };
+  for(const p of items){
+    const div = document.createElement('div');
+    const created = p.createdAt?.replace('T',' ').slice(0,16) || '-';
+    const updated = p.updatedAt?.replace('T',' ').slice(0,16) || '-';
+    div.className = 'bg-slate-900/70 ring-1 ring-white/10 rounded-xl p-4 flex flex-wrap items-center gap-3';
+    div.innerHTML = `
+      <div class="flex-1">
+        <div class="font-semibold">${p.name}</div>
+        <div class="text-slate-400 text-sm">Transaksi: ${p.trades.length} • Catatan: ${p.notes||'-'}</div>
+        <div class="text-slate-500 text-xs">Dibuat: ${created} • Update: ${updated}</div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button data-id="${p.id}" data-act="open" class="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded-lg">Lanjut Journal</button>
+        <button data-id="${p.id}" data-act="del" class="bg-rose-600 hover:bg-rose-500 text-white px-3 py-1 rounded-lg">Hapus</button>
+      </div>
+    `;
+    projectsList.appendChild(div);
+  }
+}
+function openProjects(){ renderProjects(); projectsModal.classList.remove('hidden'); projectsModal.classList.add('flex'); }
+function closeProjectsModal(){ projectsModal.classList.add('hidden'); projectsModal.classList.remove('flex'); }
+
+/* ===== save project modal ===== */
+function openSaveProjectModal(){
+  saveProjectName.value = '';
+  saveProjectNotes.value = '';
+  saveProjectModal.classList.remove('hidden'); saveProjectModal.classList.add('flex');
+  setTimeout(()=>saveProjectName.focus(),50);
+}
+function closeSaveProjectModal(){ saveProjectModal.classList.add('hidden'); saveProjectModal.classList.remove('flex'); }
+
+/* ===== events: ADD FORM ===== */
+form?.addEventListener('input', ()=>{
+  applyPriceFormatToAddForm();
+});
+form?.addEventListener('change', e=>{
+  if (e.target && e.target.name === 'symbol') applyPriceFormatToAddForm();
+});
+
+/* validasi + tambah row  (TIDAK reset modal/risk) */
+form?.addEventListener('submit', e=>{
+  e.preventDefault();
+  const keepSettings = getSettings();
+
+  const symbol = normalizeSymbol(form.symbol.value || '');
+  const side   = form.side.value;
+  const entry  = Number(form.entry_price.value);
+  const sl     = Number(form.stop_loss.value);
+  const prec   = precisionForSymbol(symbol);
+
+  if (!symbol || !Number.isFinite(entry) || !Number.isFinite(sl)) {
+    alert('Isi minimal: Symbol, Entry, dan Stop Loss dengan nilai yang valid.');
+    return;
+  }
+  if (entry === sl) {
+    alert('Entry dan Stop Loss tidak boleh sama.');
+    return;
   }
 
-  // --- getter element
-  const $id = (x)=> document.getElementById(x);
-
-  const projectsModal    = $id('projectsModal');
-  const projectsList     = $id('projectsList');
-  const saveProjectModal = $id('saveProjectModal');
-  const saveProjectName  = $id('saveProjectName');
-  const saveProjectNotes = $id('saveProjectNotes');
-
-  // helper: bind sekali saja per elemen-event
-  function bindOnce(el, type, key, handler){
-    if (!el) return;
-    const flag = `bound_${key}`;
-    if (el.dataset && el.dataset[flag]) return;
-    el.addEventListener(type, handler);
-    if (el.dataset) el.dataset[flag] = '1';
-  }
-
-  // === Toolbar: Projects
-  bindOnce($id('openProjectsBtn'), 'click', 'openProjects', () => {
-    if (typeof renderProjects === 'function') renderProjects();
-    projectsModal?.classList.remove('hidden');
-    projectsModal?.classList.add('flex');
+  addTrade({
+    id: uid(),
+    symbol,
+    side,
+    entry_price: roundTo(entry, prec),
+    stop_loss:   roundTo(sl,   prec),
+    setup_date: form.setup_date.value || '',
+    note: form.note.value || '',
+    result: '',
+    // field lampiran default
+    img_before_data: '',
+    img_after_data: ''
   });
 
-  // === Toolbar: Simpan Project (buka modal)
-  bindOnce($id('saveProjectBtn'), 'click', 'openSaveProject', () => {
-    if (typeof openSaveProjectModal === 'function') {
-      openSaveProjectModal();
-    } else {
-      if (saveProjectName)  saveProjectName.value  = '';
-      if (saveProjectNotes) saveProjectNotes.value = '';
-      saveProjectModal?.classList.remove('hidden');
-      saveProjectModal?.classList.add('flex');
-      setTimeout(()=> saveProjectName?.focus(), 50
-
+  form.reset();
+  setSettings(keepSettings);
+  calcSim();
+  rPointEl.textContent = tp1El.textContent = tp2El.textContent = tp3El.textContent = '0.00';
+  refresh();
+});
+SAYA MENEMUKAN BAGIAN INI
 /* ===== events: ADD FORM ===== */
 form?.addEventListener('input', ()=>{
   applyPriceFormatToAddForm();
