@@ -6,8 +6,39 @@
   <title>RR Journal — Projects</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.tailwindcss.com"></script>
-  
   <link rel="stylesheet" href="style.css">
+
+  <!-- SCROLL AREA untuk tabel daftar trade -->
+  <style>
+    .table-scroll{
+      /* atur tinggi area scroll sesuai kebutuhan */
+      max-height: 420px;
+      overflow: auto;                 /* vertikal + horizontal bila perlu */
+      border-radius: 1rem;            /* match rounded-2xl */
+      padding-right: 12px;            /* supaya tidak ketutup ikon mengambang di kanan */
+      scrollbar-gutter: stable both-edges;
+    }
+    .table-scroll thead th{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(2,6,23,0.8);   /* bg-slate-900/80 */
+      backdrop-filter: blur(8px);
+    }
+    .table-scroll tfoot td{
+      position: sticky;
+      bottom: 0;
+      z-index: 1;
+      background: rgba(2,6,23,0.7);   /* bg-slate-900/70 */
+      backdrop-filter: blur(6px);
+    }
+    /* kolom Aksi biar tidak terpotong */
+    #tradeTable th:last-child,
+    #tradeTable td:last-child{
+      white-space: nowrap;
+      width: 92px; /* sesuaikan dengan jumlah tombol */
+    }
+  </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
   <div class="max-w-6xl mx-auto p-4 md:p-8">
@@ -155,8 +186,9 @@
         </div>
       </div>
 
-      <div class="overflow-x-auto rounded-2xl ring-1 ring-white/10">
-        <table class="min-w-full text-sm">
+      <!-- >>> AREA SCROLL UNTUK TABEL <<< -->
+      <div class="table-scroll overflow-x-auto ring-1 ring-white/10">
+        <table id="tradeTable" class="min-w-full text-sm">
           <thead class="bg-slate-900/80 backdrop-blur text-slate-300">
             <tr>
               <th class="px-3 py-2 text-left">Tanggal</th>
@@ -184,6 +216,7 @@
           </tfoot>
         </table>
       </div>
+      <!-- /AREA SCROLL -->
     </section>
   </div>
 
@@ -346,59 +379,58 @@
 
   <script src="app.js"></script>
 
-<script>
-(function () {
-  const MAX_MB = 3; // samakan dgn teks di UI Anda (2–3MB)
+  <script>
+  (function () {
+    const MAX_MB = 3; // samakan dgn teks di UI Anda (2–3MB)
 
-  document.querySelectorAll('.img-dropzone').forEach(zone => {
-    // biar bisa focus dan menerima paste setelah diklik
-    if (!zone.hasAttribute('tabindex')) zone.setAttribute('tabindex', '0');
-    zone.addEventListener('click', () => zone.focus());
+    document.querySelectorAll('.img-dropzone').forEach(zone => {
+      // biar bisa focus dan menerima paste setelah diklik
+      if (!zone.hasAttribute('tabindex')) zone.setAttribute('tabindex', '0');
+      zone.addEventListener('click', () => zone.focus());
 
-    zone.addEventListener('paste', (e) => {
-      const items = e.clipboardData && e.clipboardData.items ? e.clipboardData.items : [];
-      for (const it of items) {
-        if (it.kind !== 'file') continue;
-        const file = it.getAsFile();
-        if (!file) continue;
-        if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
-        const sizeMB = file.size / (1024 * 1024);
-        if (sizeMB > MAX_MB) {
-          alert(`Ukuran gambar terlalu besar (${sizeMB.toFixed(2)} MB). Maksimal ${MAX_MB} MB`);
-          return;
+      zone.addEventListener('paste', (e) => {
+        const items = e.clipboardData && e.clipboardData.items ? e.clipboardData.items : [];
+        for (const it of items) {
+          if (it.kind !== 'file') continue;
+          const file = it.getAsFile();
+          if (!file) continue;
+          if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
+          const sizeMB = file.size / (1024 * 1024);
+          if (sizeMB > MAX_MB) {
+            alert(\`Ukuran gambar terlalu besar (\${sizeMB.toFixed(2)} MB). Maksimal \${MAX_MB} MB\`);
+            return;
+          }
+
+          e.preventDefault(); // kita handle sendiri
+
+          // >>> inti solusi: inject ke input[type=file] yg sudah ada <<<
+          const input = zone.querySelector('input[type="file"]');
+          if (input) {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+
+            // picu semua logika lama (preview, simpan, dll) yang listen 'change'
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+
+          // opsional: preview cepat (kalau UI Anda belum auto-preview di 'change')
+          const url = URL.createObjectURL(file);
+          let img = zone.querySelector('img.preview');
+          if (!img) {
+            img = document.createElement('img');
+            img.className = 'preview';
+            img.style.cssText = 'display:block;width:100%;height:auto;border-radius:10px;margin-top:8px';
+            zone.appendChild(img);
+          }
+          img.src = url;
+
+          break; // ambil 1 gambar pertama saja
         }
-
-        e.preventDefault(); // kita handle sendiri
-
-        // >>> inti solusi: inject ke input[type=file] yg sudah ada <<<
-        const input = zone.querySelector('input[type="file"]');
-        if (input) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          input.files = dt.files;
-
-          // picu semua logika lama (preview, simpan, dll) yang listen 'change'
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // opsional: preview cepat (kalau UI Anda belum auto-preview di 'change')
-        const url = URL.createObjectURL(file);
-        let img = zone.querySelector('img.preview');
-        if (!img) {
-          img = document.createElement('img');
-          img.className = 'preview';
-          img.style.cssText = 'display:block;width:100%;height:auto;border-radius:10px;margin-top:8px';
-          zone.appendChild(img);
-        }
-        img.src = url;
-
-        break; // ambil 1 gambar pertama saja
-      }
+      });
     });
-  });
-})();
-</script>
+  })();
+  </script>
 
 </body>
 </html>
-ini file html
