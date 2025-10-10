@@ -327,9 +327,18 @@ function refresh(){
 /* ===== CRUD data ===== */
 function addTrade(obj){ 
   const data = load(); 
-  data.push(obj);   // <— ubah dari unshift ke push
+  data.push(obj);         // tambah di bawah
   save(data); 
+  renderTrades();         // render ulang tabel
+  
+  // === scroll otomatis ke bawah ===
+  const tbl = document.querySelector('.table-scroll');
+  if (tbl) {
+    setTimeout(() => { tbl.scrollTo({ top: tbl.scrollHeight, behavior: 'smooth' }); }, 100);
+  }
 }
+
+
 function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
 function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
 
