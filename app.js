@@ -758,7 +758,7 @@ function computeStats(trades){
   };
 }
 
-/* ===== template laporan HTML lama (rapi & seragam) ===== */
+/* ===== template laporan HTML lama (tetap ada) ===== */
 function buildReportHTML({ projectName, createdAt, stats }) {
   const css = `
   :root{--bg:#0b1220;--panel:#0f172a;--text:#e2e8f0;--muted:#94a3b8;--pos:#10b981;--neg:#f43f5e}
@@ -767,15 +767,8 @@ function buildReportHTML({ projectName, createdAt, stats }) {
   .wrap{max-width:1024px;margin:0 auto;padding:24px}
   .grid{display:grid;gap:12px}
   .g-4{grid-template-columns:repeat(4,1fr);align-items:stretch}
-  .g-3{grid-template-columns:repeat(3,1fr);align-items:stretch}  /* <— tambahkan grid 3 kolom */
-  .card{
-    background:rgba(15,23,42,.9);
-    border:1px solid rgba(255,255,255,.08);
-    border-radius:12px;
-    padding:16px;
-    display:flex;flex-direction:column;justify-content:space-between;
-    min-height:150px
-  }
+  .card{background:rgba(15,23,42,.9);border:1px solid rgba(255,255,255,.08);border-radius:12px;
+        padding:16px;display:flex;flex-direction:column;justify-content:space-between;min-height:150px}
   h1{font-size:22px;margin:0 0 8px}
   .muted{color:var(--muted)} .big{font-size:22px;font-weight:700}
   .row{display:flex;gap:12px;align-items:center}
@@ -786,7 +779,7 @@ function buildReportHTML({ projectName, createdAt, stats }) {
   .r-list{display:flex;flex-direction:column;gap:6px;line-height:1.4}
   @media print{body{background:#fff;color:#000}.card{background:#fff;border-color:#ddd}}
   `;
-  const fmt  = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmt = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
   const sign = n => n>=0?'pos':'neg';
 
   return `<!doctype html>
@@ -795,13 +788,11 @@ function buildReportHTML({ projectName, createdAt, stats }) {
   <title>Laporan — ${projectName}</title><style>${css}</style></head>
   <body><div class="wrap">
 
-    <!-- Header -->
     <div class="card" style="margin-bottom:12px;min-height:auto">
       <h1>${projectName}</h1>
       <div class="muted">Dibuat: ${createdAt} • Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'}</div>
     </div>
 
-    <!-- Ringkas atas: 4 kartu -->
     <div class="grid g-4" style="margin-bottom:12px">
       <div class="card"><div class="muted">Jumlah Transaksi</div><div class="big">${stats.total}</div></div>
       <div class="card"><div class="muted">Prob ≥ TP1</div><div class="row"><div class="big">${stats.prob.tp1}%</div><div class="bar"><i style="width:${stats.prob.tp1}%"></i></div></div></div>
@@ -809,13 +800,15 @@ function buildReportHTML({ projectName, createdAt, stats }) {
       <div class="card"><div class="muted">Prob ≥ TP3</div><div class="row"><div class="big">${stats.prob.tp3}%</div><div class="bar"><i style="width:${stats.prob.tp3}%"></i></div></div></div>
     </div>
 
-    <!-- RINGKAS TENGAH: dibikin 3 kolom seragam -->
-    <div class="grid g-3" style="margin-bottom:12px">
+    <div class="grid g-4" style="margin-bottom:12px">
+      <div class="card">
+        <div class="muted">Total R (Final/Net)</div>
+        <div class="big ${sign(stats.rsumTotal)}">${stats.rsumTotal}</div>
+      </div>
       <div class="card">
         <div class="muted">ΣR Komponen (R1+R2+R3)</div>
         <div class="big ${sign(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div>
       </div>
-
       <div class="card">
         <div class="muted">Akumulasi R</div>
         <div class="r-list">
@@ -824,7 +817,6 @@ function buildReportHTML({ projectName, createdAt, stats }) {
           <div>R3: <b class="${sign(stats.rsum.r3)}">${stats.rsum.r3}</b></div>
         </div>
       </div>
-
       <div class="card">
         <div class="muted">Simulasi Balance</div>
         <div>Modal: <b>$${Number(stats.sim.base).toLocaleString('id-ID')}</b></div>
@@ -832,7 +824,6 @@ function buildReportHTML({ projectName, createdAt, stats }) {
       </div>
     </div>
 
-    <!-- Skenario TP1 / TP2 / TP3 / Semua R -->
     <div class="grid g-4" style="margin-bottom:12px">
       ${['rr1','rr2','rr3','combined'].map(k=>{
         const label={rr1:'TP1',rr2:'TP2',rr3:'TP3',combined:'Semua R'}[k];
@@ -846,7 +837,6 @@ function buildReportHTML({ projectName, createdAt, stats }) {
       }).join('')}
     </div>
 
-    <!-- Statistik bawah -->
     <div class="grid g-4">
       <div class="card">
         <div class="muted">Win (kumulatif ≥ TP)</div>
@@ -879,7 +869,6 @@ function buildReportHTML({ projectName, createdAt, stats }) {
         <div><b class="pos">$${fmt(stats.streak.maxConsecProfitUSD)}</b></div>
         <div><b class="pos">${stats.streak.maxConsecProfitR}R</b></div>
       </div>
-
       <div class="card">
         <div class="muted">Max Drawdown</div>
         <div><b class="neg">$${fmt(stats.drawdown.maxAbs)}</b></div>
@@ -1007,39 +996,17 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
   const header = `
     <div>
-     <h1>${projectName}</h1>
-<div class="muted">
-  Rentang: ${stats.range.min || '-'} — ${stats.range.max || '-'} • Disusun otomatis dari RR Journal
-</div>
-</div>
-
-<div class="cards">
-  <div class="card">
-    <div class="k">Transaksi</div>
-    <div class="v">${fmt0(stats.total)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">Win / Loss</div>
-    <div class="v">${fmt0(win)} / ${fmt0(loss)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">ΣR (R1+R2+R3)</div>
-    <div class="v ${signClass(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">1R (USD)</div>
-    <div class="v">$${fmt(stats.sim.oneR)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">P/L (USD)</div>
-    <div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div>
-  </div>
-</div>
-`;
+      <h1>${projectName}</h1>
+      <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
+      <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
+      <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
+      <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
+      <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+    </div>
+  `;
 
   // running P/L & Equity
   const oneR = stats.sim.oneR;
@@ -1122,51 +1089,10 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 }
 
 /* =====================================================
-   Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
+   Gambar: preview, drag & drop, lightbox
    ===================================================== */
 
-const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB aman untuk localStorage
-let lastImgKind = 'before'; // target default untuk paste URL
-
-function isLikelyImageURL(t){
-  try{
-    if(!t) return false;
-    if(t.startsWith('data:image/')) return true;
-    const u = new URL(t);
-    return ['http:','https:'].includes(u.protocol) && /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(u.pathname);
-  }catch{ return false; }
-}
-
-async function blobToDataURL(blob){
-  return await new Promise((resolve,reject)=>{
-    const fr = new FileReader();
-    fr.onload = ()=>resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(blob);
-  });
-}
-
-async function fetchToDataURL(url){
-  try{
-    const res = await fetch(url, { mode:'cors' });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const blob = await res.blob();
-    if (blob.size > MAX_IMG_BYTES){
-      alert('Ukuran gambar dari URL terlalu besar (> ~3MB). Gunakan gambar yang lebih kecil.');
-      return '';
-    }
-    return await blobToDataURL(blob);
-  }catch(err){
-    console.error('Gagal fetch URL gambar:', err);
-    alert('Tidak bisa memuat link gambar (mungkin CORS diproteksi atau link tidak valid).');
-    return '';
-  }
-}
-
-async function urlToBase64Smart(url){
-  if(url.startsWith('data:image/')) return url; // sudah base64
-  return await fetchToDataURL(url);
-}
+const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB aman untuk localStorage, saranku <300KB ideal
 
 async function fileToBase64(file){
   if (!file) return '';
@@ -1224,24 +1150,14 @@ async function handlePickFile(inputEl, kind){
 
 function setupDragDrop(areaEl, inputEl, kind){
   if (!areaEl || !inputEl) return;
-  ['dragenter','dragover'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.add('drop-active'); lastImgKind = kind; }));
+  ['dragenter','dragover'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.add('drop-active'); }));
   ['dragleave','dragend','drop'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.remove('drop-active'); }));
   areaEl.addEventListener('drop', async e=>{
-    const dt = e.dataTransfer; if(!dt) return;
-    const file = dt.files?.[0];
-    if(file){
-      const b64 = await fileToBase64(file);
-      if (b64) setImagePreview(kind, b64);
-      return;
-    }
-    // Text/URL drop
-    const t = dt.getData('text');
-    if(isLikelyImageURL(t)){
-      const b64 = await urlToBase64Smart(t.trim());
-      if (b64) setImagePreview(kind, b64);
-    }
+    const file = e.dataTransfer?.files?.[0]; if (!file) return;
+    const b64 = await fileToBase64(file);
+    if (b64) setImagePreview(kind, b64);
   });
-  areaEl.addEventListener('click', ()=> { lastImgKind = kind; inputEl.click(); });
+  areaEl.addEventListener('click', ()=> inputEl.click());
 }
 
 /* lightbox */
@@ -1255,8 +1171,8 @@ function closeLightbox(){
   imgViewerImg.src = '';
 }
 
-editImgBefore?.addEventListener('change', ()=> { lastImgKind='before'; handlePickFile(editImgBefore,'before'); });
-editImgAfter?.addEventListener('change',  ()=> { lastImgKind='after';  handlePickFile(editImgAfter,'after'); });
+editImgBefore?.addEventListener('change', ()=> handlePickFile(editImgBefore,'before'));
+editImgAfter?.addEventListener('change',  ()=> handlePickFile(editImgAfter,'after'));
 btnClearImgBefore?.addEventListener('click', ()=> setImagePreview('before',''));
 btnClearImgAfter?.addEventListener('click',  ()=> setImagePreview('after',''));
 btnViewImgBefore?.addEventListener('click',   ()=> openLightbox(editImgBeforeData.value));
@@ -1267,57 +1183,6 @@ imgViewer?.addEventListener('click', e=>{ if(e.target===imgViewer) closeLightbox
 // drag-n-drop on labels
 setupDragDrop(dropBefore, editImgBefore, 'before');
 setupDragDrop(dropAfter,  editImgAfter,  'after');
-
-/* ===== (BARU) — Tambah field URL untuk gambar + Paste global ===== */
-function injectUrlBarUnder(areaEl, kind){
-  if(!areaEl) return;
-  const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
-  if (document.getElementById(id)) return; // sudah dibuat
-
-  const wrap = document.createElement('div');
-  wrap.className = 'mt-2 flex gap-2';
- wrap.innerHTML = `
-  <input id="${id}" type="url" 
-    placeholder="Tempel link gambar (https://… atau data:image/…)" 
-    class="w-full rounded-xl border border-slate-300 bg-white text-slate-900 
-           px-3 py-2 text-sm placeholder-slate-500 
-           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-  <button type="button" 
-    class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">
-    Muat
-  </button>
-`;
-
-  areaEl.insertAdjacentElement('afterend', wrap);
-
-  const input = wrap.querySelector('input');
-  const btn   = wrap.querySelector('button');
-
-  const loader = async () => {
-    const url = (input.value||'').trim();
-    if (!isLikelyImageURL(url)) { alert('Link tidak valid. Pakai URL file gambar langsung.'); return; }
-    const b64 = await urlToBase64Smart(url);
-    if (b64) setImagePreview(kind, b64);
-  };
-
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
-  btn.addEventListener('click', loader);
-
-  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-}
-
-// inject URL bar bila ada drop zone
-injectUrlBarUnder(dropBefore, 'before');
-injectUrlBarUnder(dropAfter,  'after');
-
-// Global paste: jika ada URL gambar di clipboard, muat ke area terakhir yang aktif
-window.addEventListener('paste', async (e)=>{
-  const t = (e.clipboardData || window.clipboardData)?.getData?.('text') || '';
-  if (isLikelyImageURL(t)){
-    const b64 = await urlToBase64Smart(t.trim());
-    if (b64) setImagePreview(lastImgKind, b64);
-  }
-});
 
 /* ===== Init ===== */
 (function init(){
