@@ -1336,4 +1336,3 @@ window.addEventListener('paste', async (e) => {
   updateActiveProjectUI();
   calcSim();
 })();
-anda buat susunan judul2 dalam kode ini agar kedepan mudah untuk mencari fungsi yg di maksud
