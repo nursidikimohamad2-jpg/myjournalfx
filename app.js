@@ -800,7 +800,11 @@ function buildReportHTML({ projectName, createdAt, stats }) {
       <div class="card"><div class="muted">Prob ≥ TP3</div><div class="row"><div class="big">${stats.prob.tp3}%</div><div class="bar"><i style="width:${stats.prob.tp3}%"></i></div></div></div>
     </div>
 
-    
+    <div class="grid g-4" style="margin-bottom:12px">
+      <div class="card">
+        <div class="muted">Total R (Final/Net)</div>
+        <div class="big ${sign(stats.rsumTotal)}">${stats.rsumTotal}</div>
+      </div>
       <div class="card">
         <div class="muted">ΣR Komponen (R1+R2+R3)</div>
         <div class="big ${sign(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div>
@@ -992,39 +996,17 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
   const header = `
     <div>
-     <h1>${projectName}</h1>
-<div class="muted">
-  Rentang: ${stats.range.min || '-'} — ${stats.range.max || '-'} • Disusun otomatis dari RR Journal
-</div>
-</div>
-
-<div class="cards">
-  <div class="card">
-    <div class="k">Transaksi</div>
-    <div class="v">${fmt0(stats.total)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">Win / Loss</div>
-    <div class="v">${fmt0(win)} / ${fmt0(loss)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">ΣR (R1+R2+R3)</div>
-    <div class="v ${signClass(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">1R (USD)</div>
-    <div class="v">$${fmt(stats.sim.oneR)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">P/L (USD)</div>
-    <div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div>
-  </div>
-</div>
-`;
+      <h1>${projectName}</h1>
+      <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
+    </div>
+    <div class="cards">
+      <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
+      <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
+      <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
+      <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
+      <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+    </div>
+  `;
 
   // running P/L & Equity
   const oneR = stats.sim.oneR;
@@ -1261,18 +1243,10 @@ function injectUrlBarUnder(areaEl, kind){
 
   const wrap = document.createElement('div');
   wrap.className = 'mt-2 flex gap-2';
- wrap.innerHTML = `
-  <input id="${id}" type="url" 
-    placeholder="Tempel link gambar (https://… atau data:image/…)" 
-    class="w-full rounded-xl border border-slate-300 bg-white text-slate-900 
-           px-3 py-2 text-sm placeholder-slate-500 
-           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-  <button type="button" 
-    class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">
-    Muat
-  </button>
-`;
-
+  wrap.innerHTML = `
+    <input id="${id}" type="url" placeholder="Tempel link gambar (https://… atau data:image/…)" class="flex-1 rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm" />
+    <button type="button" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Muat</button>
+  `;
   areaEl.insertAdjacentElement('afterend', wrap);
 
   const input = wrap.querySelector('input');
