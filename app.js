@@ -501,6 +501,103 @@ form?.addEventListener('submit', e=>{
   rPointEl.textContent = tp1El.textContent = tp2El.textContent = tp3El.textContent = '0.00';
   refresh();
 });
+/* ====== PROJECTS — STORAGE & EVENTS (tempel di bawah kode kamu) ====== */
+
+// 1) Helper simpan/muat project
+const PROJ_KEY = 'rr_journal_projects_v1';
+function loadProj() {
+  try { return JSON.parse(localStorage.getItem(PROJ_KEY) || '[]'); }
+  catch { return []; }
+}
+function saveProj(items) {
+  localStorage.setItem(PROJ_KEY, JSON.stringify(items));
+}
+
+// 2) Ambil elemen yang dipakai modal
+const projectsModal      = document.getElementById('projectsModal');
+const projectsList       = document.getElementById('projectsList');
+const saveProjectModal   = document.getElementById('saveProjectModal');
+const saveProjectName    = document.getElementById('saveProjectName');
+const saveProjectNotes   = document.getElementById('saveProjectNotes');
+
+// 3) Tombol toolbar
+document.getElementById('openProjectsBtn')?.addEventListener('click', () => {
+  renderProjects();                      // isi daftar
+  projectsModal.classList.remove('hidden');
+  projectsModal.classList.add('flex');
+});
+
+document.getElementById('saveProjectBtn')?.addEventListener('click', () => {
+  saveProjectName.value = '';
+  saveProjectNotes.value = '';
+  saveProjectModal.classList.remove('hidden');
+  saveProjectModal.classList.add('flex');
+  setTimeout(()=> saveProjectName?.focus(), 50);
+});
+
+// 4) Tombol dalam modal “Simpan Project”
+document.getElementById('cancelSaveProject')?.addEventListener('click', () => {
+  saveProjectModal.classList.add('hidden');
+  saveProjectModal.classList.remove('flex');
+});
+
+document.getElementById('confirmSaveProject')?.addEventListener('click', () => {
+  const name  = saveProjectName?.value.trim();
+  const notes = saveProjectNotes?.value.trim() || '';
+  if (!name) { alert('Nama project wajib diisi.'); return; }
+
+  const now = new Date().toISOString();
+  const currentTrades = load(); // daftar trade aktifmu
+
+  const items = loadProj();
+  items.push({
+    id: (typeof uid === 'function' ? uid() : Math.random().toString(36).slice(2,9)),
+    name, notes,
+    createdAt: now, updatedAt: now,
+    trades: currentTrades
+  });
+  saveProj(items);
+
+  alert(`Project "${name}" tersimpan.`);
+  saveProjectModal.classList.add('hidden');
+  saveProjectModal.classList.remove('flex');
+});
+
+// 5) Tombol Close pada modal daftar project
+document.getElementById('closeProjects')?.addEventListener('click', () => {
+  projectsModal.classList.add('hidden');
+  projectsModal.classList.remove('flex');
+});
+
+// 6) Aksi pada daftar project (open / delete) — event delegation
+projectsList?.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const id  = btn.dataset.id;
+  const act = btn.dataset.act;
+
+  let items = loadProj();
+  const idx = items.findIndex(p => p.id === id);
+  if (idx < 0) return;
+
+  if (act === 'open') {
+    // muat trades project ke jurnal aktif
+    save(items[idx].trades);
+    if (typeof refresh === 'function') refresh();
+    else if (typeof renderTrades === 'function') renderTrades();
+    else if (typeof renderTable === 'function') renderTable();
+
+    projectsModal.classList.add('hidden');
+    projectsModal.classList.remove('flex');
+  }
+
+  if (act === 'del') {
+    if (!confirm(`Hapus project "${items[idx].name}"?`)) return;
+    items.splice(idx, 1);
+    saveProj(items);
+    renderProjects(); // refresh daftar di modal
+  }
+});
 
 /* tombol reset form -> jangan hapus modal/risk */
 form?.addEventListener('reset', ()=>{
