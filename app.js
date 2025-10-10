@@ -1,12 +1,15 @@
 /* =========================
-   RR JOURNAL — APP.JS (UTUH, cocok dgn HTML yang dikirim)
+   RR JOURNAL — APP.JS (UTUH)
+   - Dropdown symbol auto
+   - Paste URL gambar (incl. TradingView) + upload/drag
+   - Projects, Edit, Export HTML & Presentasi
    ========================= */
 
 /* ===== util DOM ===== */
 const $ = q => document.querySelector(q);
 const uid = () => Math.random().toString(36).slice(2,9);
 
-/* ===== refs ===== */
+/* ===== refs (sesuai HTML yang kamu kirim) ===== */
 const form = $('#tradeForm');
 const rPointEl = $('#rPoint'), tp1El = $('#tp1Display'), tp2El = $('#tp2Display'), tp3El = $('#tp3Display');
 const pBox1 = $('#pBox1'), pBox2 = $('#pBox2'), pBox3 = $('#pBox3'), totalTxBox = $('#totalTxBox');
@@ -16,11 +19,11 @@ const exportBtn = $('#exportBtn'), importInput = $('#importInput'), clearBtn = $
 const exportHtmlBtn = $('#exportHtmlBtn'), exportDeckBtn = $('#exportDeckBtn');
 
 /* ===== Simulasi Balance (editable input) ===== */
-const baseInput = $('#baseInput');     // Modal (USD)
-const riskInput = $('#riskInput');     // Risk % per trade
-const rValBox = $('#rValBox');         // 1R (USD)
-const simBalBox = $('#simBalBox');     // Equity (sim)
-const pnlMoneyBox = $('#pnlMoneyBox'); // P/L (sim)
+const baseInput = $('#baseInput');
+const riskInput = $('#riskInput');
+const rValBox = $('#rValBox');
+const simBalBox = $('#simBalBox');
+const pnlMoneyBox = $('#pnlMoneyBox');
 
 /* ===== Projects ===== */
 const saveProjectBtn = $('#saveProjectBtn'), openProjectsBtn = $('#openProjectsBtn');
@@ -138,7 +141,7 @@ function ensureSymbolDropdownForAdd(){
   const sel = document.createElement('select');
   sel.id = old.id || 'symbol';
   sel.name = old.name || 'symbol';
-  sel.className = old.className || 'w-full';
+  sel.className = old.className || 'w-full bg-slate-900/70 border border-slate-700 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500';
   sel.required = true;
 
   populateSelectOptions(sel, SYMBOLS);
@@ -164,7 +167,7 @@ function ensureSymbolDropdownForEdit(){
   const sel = document.createElement('select');
   sel.id = old.id || 'editSymbol';
   sel.name = old.name || 'symbol';
-  sel.className = old.className || 'w-full';
+  sel.className = old.className || 'w-full bg-slate-100 border border-slate-300 rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500';
   sel.required = true;
 
   populateSelectOptions(sel, SYMBOLS);
@@ -384,11 +387,10 @@ function openEdit(id){
   editForm.entry_price.value = t.entry_price ?? 0;
   editForm.stop_loss.value  = t.stop_loss  ?? 0;
 
-  // optional close fields (jaga jika ada)
   if (editForm.close_date) editForm.close_date.value = toDTInput(t.close_date || '');
   if (editForm.close_type) editForm.close_type.value = t.close_type || '';
 
-  // gambar (base64)
+  // gambar (base64 ATAU URL)
   setImagePreview('before', t.img_before_data || '');
   setImagePreview('after',  t.img_after_data  || '');
 
@@ -474,10 +476,8 @@ form?.addEventListener('submit', e=>{
     setup_date: form.setup_date?.value || '',
     note: form.note?.value || '',
     result: '',
-    // optional close fields (biar future-proof)
     close_date: form.close_date?.value || '',
     close_type: form.close_type?.value || '',
-    // field lampiran default
     img_before_data: '',
     img_after_data: ''
   });
@@ -527,7 +527,6 @@ editForm?.addEventListener('submit', e=>{
     stop_loss:   roundTo(Number(editForm.stop_loss?.value)||0,  prec),
     close_date: editForm.close_date?.value || '',
     close_type: editForm.close_type?.value || '',
-    // simpan lampiran base64 yang tertampung di hidden input
     img_before_data: (editImgBeforeData?.value || ''),
     img_after_data:  (editImgAfterData?.value || '')
   });
@@ -988,14 +987,8 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   table.meta td{padding:8px 10px;border-radius:8px;background:#0c172a;border:1px solid var(--ring)}
   table.meta td.k{width:25%;color:#9fb1c5}
   table.meta td.v{text-align:right;font-weight:600}
-  .eval{background:#0c172a;border:1px solid var(--ring);border-radius:8px;padding:10px 12px;min-height:120px}
-  .head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
-  .sym{font-size:18px;font-weight:700}
-  .time{font-size:12px;color:var(--muted)}
-  .flex{display:flex;gap:16px}
-  .grow{flex:1}
   @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
-  @media print{ body{background:#fff;color:#000} .card,.block,.thumb,.eval{background:#fff;border-color:#ddd} }
+  @media print{ body{background:#fff;color:#000} .card,.block,.thumb{background:#fff;border-color:#ddd} }
   `;
   const fmt = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
   const fmt0 = n => (+n).toLocaleString('id-ID',{maximumFractionDigits:0});
@@ -1009,7 +1002,6 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
       <h1>${projectName}</h1>
       <div class="muted">Rentang: ${stats.range.min || '-'} — ${stats.range.max || '-'} • Disusun otomatis dari RR Journal</div>
     </div>
-
     <div class="cards">
       <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
       <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
@@ -1019,11 +1011,8 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     </div>
   `;
 
-  // running P/L & Equity
   const oneR = stats.sim.oneR;
-  let runR = 0;
-  let runPnlUSD = 0;
-  let runEq = stats.sim.base;
+  let runR = 0, runPnlUSD = 0, runEq = stats.sim.base;
 
   const tradeCards = (trades||[]).map(t=>{
     const sym = normalizeSymbol(t.symbol);
@@ -1038,33 +1027,31 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     const [r1,r2,r3] = rByResult(t.result||'');
     const rnet = netROf(t.result||'');
 
-    // update running
     runR += rnet;
     runPnlUSD = runR * oneR;
     runEq = stats.sim.base + runPnlUSD;
 
     const imgBefore = t.img_before_data || '';
     const imgAfter  = t.img_after_data  || '';
-
     const price = v => toFixedBy(v, prec);
 
     return `
       <div class="block">
-        <div class="head">
-          <div class="sym">${sym}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+          <div style="font-size:18px;font-weight:700">${sym}</div>
           <span class="badge ${t.side}">${t.side}</span>
           ${t.result ? `<span class="badge ${t.result}">${t.result}</span>` : ''}
-          <div class="time">• ${fmtDT(t.setup_date||'')}</div>
+          <div class="muted" style="font-size:12px">• ${fmtDT(t.setup_date||'')}</div>
         </div>
 
         <div class="row">
           <div>
-            <div class="thumb">${imgBefore ? `<img src="${imgBefore}" alt="Sebelum">` : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}</div>
-            <div class="cap">Sebelum — (placeholder/chart atau gambar sebelum)</div>
+            <div class="thumb"><img src="${imgBefore || ''}" onerror="this.replaceWith(document.createTextNode('No Image'))" alt="Sebelum"></div>
+            <div class="cap">Sebelum</div>
           </div>
           <div>
-            <div class="thumb">${imgAfter ? `<img src="${imgAfter}" alt="Sesudah">` : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}</div>
-            <div class="cap">Sesudah — (placeholder/chart atau gambar sesudah)</div>
+            <div class="thumb"><img src="${imgAfter || ''}" onerror="this.replaceWith(document.createTextNode('No Image'))" alt="Sesudah"></div>
+            <div class="cap">Sesudah</div>
           </div>
         </div>
 
@@ -1091,20 +1078,15 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 }
 
 /* =====================================================
-   Gambar: preview, drag & drop, lightbox + URL PASTE
+   Gambar: upload, drag & drop, lightbox + PASTE URL
+   - Mendukung URL langsung (.png/.jpg/.webp/.gif)
+   - Mendukung link TradingView (/x/xxxxxx/) → fallback simpan URL
    ===================================================== */
-
 const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB
 let lastImgKind = 'before';
 
-function isLikelyImageURL(t){
-  try{
-    if(!t) return false;
-    if(t.startsWith('data:image/')) return true;
-    const u = new URL(t);
-    return ['http:','https:'].includes(u.protocol) && /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(u.pathname);
-  }catch{ return false; }
-}
+const isDirectImageURL = (txt) => /^https?:\/\/.+\.(png|jpe?g|webp|gif)(\?.*)?$/i.test((txt||'').trim());
+const isTradingViewShare = (txt) => /^https?:\/\/(www\.)?tradingview\.com\/x\/[A-Za-z0-9]+\/?$/i.test((txt||'').trim());
 
 async function fileToBase64(file){
   if (!file) return '';
@@ -1119,12 +1101,23 @@ async function fileToBase64(file){
     fr.readAsDataURL(file);
   });
 }
-
-function setImagePreview(kind, base64){
+async function tryUrlToBase64(url){
+  const res = await fetch(url, { mode:'cors' });
+  if (!res.ok) throw new Error('HTTP '+res.status);
+  const blob = await res.blob();
+  if (blob.size > MAX_IMG_BYTES) throw new Error('too-large');
+  return await new Promise((resolve,reject)=>{
+    const r = new FileReader();
+    r.onload = ()=>resolve(r.result);
+    r.onerror = reject;
+    r.readAsDataURL(blob);
+  });
+}
+function setImagePreview(kind, value){ // value: base64 ATAU URL
   if (kind==='before'){
-    if (base64){
-      editImgBeforeData.value = base64;
-      editImgBeforePreview.src = base64;
+    if (value){
+      editImgBeforeData.value = value;
+      editImgBeforePreview.src = value;
       editImgBeforePreview.classList.remove('hidden');
       btnClearImgBefore.classList.remove('hidden');
       btnViewImgBefore.classList.remove('hidden');
@@ -1136,9 +1129,9 @@ function setImagePreview(kind, base64){
       btnViewImgBefore.classList.add('hidden');
     }
   } else {
-    if (base64){
-      editImgAfterData.value = base64;
-      editImgAfterPreview.src = base64;
+    if (value){
+      editImgAfterData.value = value;
+      editImgAfterPreview.src = value;
       editImgAfterPreview.classList.remove('hidden');
       btnClearImgAfter.classList.remove('hidden');
       btnViewImgAfter.classList.remove('hidden');
@@ -1151,7 +1144,6 @@ function setImagePreview(kind, base64){
     }
   }
 }
-
 async function handlePickFile(inputEl, kind){
   const file = inputEl.files?.[0];
   if (!file) return;
@@ -1172,19 +1164,32 @@ function setupDragDrop(areaEl, inputEl, kind){
       if (b64) setImagePreview(kind, b64);
       return;
     }
-    const t = dt.getData('text');
-    if(isLikelyImageURL(t)){
-      try{
-        const res = await fetch(t, { mode:'cors' });
-        const blob = await res.blob();
-        if (blob.size > MAX_IMG_BYTES){ alert('Ukuran gambar dari URL terlalu besar.'); return; }
-        const fr = new FileReader();
-        fr.onload = ()=> setImagePreview(kind, fr.result);
-        fr.readAsDataURL(blob);
-      }catch(e){ alert('Tidak bisa memuat link gambar.'); }
+    const t = dt.getData('text')?.trim();
+    if(!t) return;
+    if (isDirectImageURL(t)) {
+      try { setImagePreview(kind, await tryUrlToBase64(t)); }
+      catch { setImagePreview(kind, t); }
+    } else if (isTradingViewShare(t)) {
+      setImagePreview(kind, t); // fallback URL langsung
     }
   });
   areaEl.addEventListener('click', ()=> { lastImgKind = kind; inputEl.click(); });
+
+  // paste URL hanya di area (tidak global) → menghindari konflik dengan input lain
+  areaEl.tabIndex = 0;
+  areaEl.addEventListener('click', ()=>areaEl.focus());
+  areaEl.addEventListener('paste', async (e)=>{
+    const txt = (e.clipboardData?.getData('text') || '').trim();
+    if (!txt) return;
+    if (isDirectImageURL(txt)) {
+      e.preventDefault();
+      try { setImagePreview(kind, await tryUrlToBase64(txt)); }
+      catch { setImagePreview(kind, txt); }
+    } else if (isTradingViewShare(txt)) {
+      e.preventDefault();
+      setImagePreview(kind, txt);
+    }
+  });
 }
 
 /* lightbox */
