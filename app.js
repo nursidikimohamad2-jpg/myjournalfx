@@ -1,5 +1,5 @@
 /* =========================
-   RR JOURNAL — APP.JS (BERSIH & SIAP PAKAI)
+   RR JOURNAL — APP.JS (SIAP PAKAI)
    ========================= */
 
 /* ===== util DOM ===== */
@@ -15,6 +15,7 @@ const tradeList = $('#tradeList'), totR1El = $('#totR1'), totR2El = $('#totR2'),
 
 const exportBtn = $('#exportBtn'), importInput = $('#importInput'), clearBtn = $('#clearBtn');
 const exportHtmlBtn = $('#exportHtmlBtn');
+const exportDeckBtn = $('#exportDeckBtn');
 
 /* ===== Simulasi Balance ===== */
 const baseInput = $('#baseInput');
@@ -312,7 +313,7 @@ function openEdit(id){
 }
 function closeEdit(){ editModal.classList.add('hidden'); editModal.classList.remove('flex'); }
 
-/* ===== Projects (single implementation) ===== */
+/* ===== Projects ===== */
 function renderProjects(){
   const items = loadProj();
   projectsList.innerHTML = '';
@@ -382,8 +383,8 @@ form?.addEventListener('submit', (e)=>{
 
   form.reset();
   setSettings(keep);
+  calcPreview(NaN, NaN, side, prec); // reset preview
   calcSim();
-  rPointEl.textContent = tp1El.textContent = tp2El.textContent = tp3El.textContent = '0.00';
 
   refresh();
 
@@ -624,6 +625,119 @@ exportHtmlBtn?.addEventListener('click', ()=>{
   }catch(e){ console.error(e); alert('Export HTML gagal.'); }
 });
 
+/* ===== Export PRESENTASI (pakai tombol #exportDeckBtn dari HTML) ===== */
+function buildPresentationHTML({ projectName, createdAt, trades, stats }){
+  const css = `
+  :root{--bg:#0b1220;--panel:#0f172a;--text:#e2e8f0;--ring:rgba(255,255,255,.08);--pos:#10b981;--neg:#f43f5e}
+  *{box-sizing:border-box} body{margin:0;background:#07111f;color:var(--text);font:14px/1.5 system-ui,Inter}
+  .wrap{max-width:1180px;margin:0 auto;padding:28px} .cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0 22px}
+  .card{background:rgba(15,23,42,.88);border:1px solid var(--ring);border-radius:12px;padding:14px;min-height:72px;display:flex;flex-direction:column;gap:6px}
+  .k{font-size:12px;color:#94a3b8}.v{font-weight:700;font-size:18px}
+  .block{background:rgba(15,23,42,.88);border:1px solid var(--ring);border-radius:14px;padding:16px;margin:14px 0}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .thumb{background:#0b1628;border:1px solid var(--ring);height:240px;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .thumb>img{max-width:100%;max-height:100%;object-fit:contain}
+  .badge{display:inline-flex;align-items:center;gap:6px;padding:.2rem .55rem;border-radius:999px;border:1px solid var(--ring);font-size:12px}
+  .LONG{background:#032a3a;color:#aaf;border-color:#0ea5e9}.SHORT{background:#3a1a1a;color:#ffd6d6;border-color:#f97316}
+  .TP1,.TP2,.TP3{background:rgba(16,185,129,.1);color:#a7f3d0;border-color:#10b981}.SL{background:rgba(244,63,94,.1);color:#fecaca;border-color:#f43f5e}
+  table.meta{width:100%;border-collapse:separate;border-spacing:0 8px} table.meta td{padding:8px 10px;border-radius:8px;background:#0c172a;border:1px solid var(--ring)}
+  table.meta td.k{width:25%} .right{text-align:right} .pos{color:#10b981}.neg{color:#f43f5e}
+  @media (max-width:900px){ .row{grid-template-columns:1fr}.cards{grid-template-columns:repeat(2,1fr)} }
+  `;
+  const fmt = (n)=> (+n).toLocaleString('id-ID',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const sign = (n)=> n>=0?'pos':'neg';
+
+  // running pnl
+  const oneR = stats.sim.oneR;
+  let runR = 0, runP = 0, runEq = stats.sim.base;
+
+  const header = `
+    <h1 style="margin:0 0 6px">${projectName}</h1>
+    <div style="color:#94a3b8">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Dibuat: ${createdAt}</div>
+    <div class="cards">
+      <div class="card"><div class="k">Transaksi</div><div class="v">${stats.total}</div></div>
+      <div class="card"><div class="k">Total R (Net)</div><div class="v ${sign(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
+      <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
+      <div class="card"><div class="k">P/L (USD)</div><div class="v ${sign(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+      <div class="card"><div class="k">Equity</div><div class="v">$${fmt(stats.sim.equity)}</div></div>
+    </div>
+  `;
+
+  const body = (trades||[]).map(t=>{
+    const sym = normalizeSymbol(t.symbol);
+    const prec = precisionForSymbol(sym);
+    const entry = +t.entry_price || 0;
+    const sl    = +t.stop_loss || 0;
+    const d     = Math.abs(entry - sl);
+    const tp1   = t.side==='LONG'? entry+d   : entry-d;
+    const tp2   = t.side==='LONG'? entry+2*d : entry-2*d;
+    const tp3   = t.side==='LONG'? entry+3*d : entry-3*d;
+    const [r1,r2,r3] = rByResult(t.result||'');
+    const rnet = netROf(t.result||'');
+
+    // running
+    runR += rnet; runP = runR * oneR; runEq = stats.sim.base + runP;
+
+    const price = (v)=> toFixedBy(v, prec);
+    const imgBefore = t.img_before_data || '';
+    const imgAfter  = t.img_after_data  || '';
+
+    return `
+      <div class="block">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <div style="font-weight:700">${sym}</div>
+          <span class="badge ${t.side}">${t.side}</span>
+          ${t.result ? `<span class="badge ${t.result}">${t.result}</span>` : ''}
+          <div style="color:#94a3b8">• ${fmtDT(t.setup_date||'')}</div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="thumb">${imgBefore ? `<img src="${imgBefore}" alt="Sebelum">` : `<svg width="100%" height="100%" viewBox="0 0 600 240"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}</div>
+            <div style="color:#94a3b8;font-size:12px;margin-top:6px">Sebelum</div>
+          </div>
+          <div>
+            <div class="thumb">${imgAfter ? `<img src="${imgAfter}" alt="Sesudah">` : `<svg width="100%" height="100%" viewBox="0 0 600 240"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}</div>
+            <div style="color:#94a3b8;font-size:12px;margin-top:6px">Sesudah</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:12px">
+          <div style="flex:1">
+            <table class="meta">
+              <tr><td class="k">Entry</td><td class="right">${price(entry)}</td><td class="k">TP1</td><td class="right">${price(tp1)}</td><td class="k">R1</td><td class="right ${r1===0?'':(r1>0?'pos':'neg')}">${r1}</td></tr>
+              <tr><td class="k">Stop Loss</td><td class="right">${price(sl)}</td><td class="k">TP2</td><td class="right">${price(tp2)}</td><td class="k">R2</td><td class="right ${r2===0?'':(r2>0?'pos':'neg')}">${r2}</td></tr>
+              <tr><td class="k">Δ (Entry–SL)</td><td class="right">${price(d)}</td><td class="k">TP3</td><td class="right">${price(tp3)}</td><td class="k">R3</td><td class="right ${r3===0?'':(r3>0?'pos':'neg')}">${r3}</td></tr>
+              <tr><td class="k">R (Net)</td><td class="right ${sign(rnet)}">${rnet}</td><td class="k">Equity (sim)</td><td class="right">$${fmt(runEq)}</td><td class="k">P/L (sim)</td><td class="right ${sign(runP)}">${runP>=0?'+':''}$${fmt(runP)}</td></tr>
+            </table>
+          </div>
+          <div style="flex:1">
+            <div style="background:#0c172a;border:1px solid var(--ring);border-radius:8px;padding:10px 12px;min-height:120px">
+              <div class="k" style="margin-bottom:6px">Evaluasi</div>
+              <div>${(t.note||'—').replace(/\n/g,'<br>')}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${projectName} — Presentasi</title><style>${css}</style></head><body><div class="wrap">
+    ${header}
+    ${body}
+  </div></body></html>`;
+}
+
+exportDeckBtn?.addEventListener('click', ()=>{
+  try{
+    const trades = load();
+    const { name } = getActiveProject();
+    const projectName = name || 'Jurnal Aktif';
+    const stats = computeStats(trades);
+    const html  = buildPresentationHTML({ projectName, createdAt:new Date().toLocaleString('id-ID'), trades, stats });
+    const fname = `rr-presentasi-${slugify(projectName)}.html`;
+    downloadTextFile(fname, html, 'text/html');
+  }catch(e){ console.error(e); alert('Export Presentasi gagal.'); }
+});
+
 /* ====== Gambar & Lightbox (minimal) ====== */
 const MAX_IMG_BYTES = 3 * 1024 * 1024;
 function fileToBase64(file){
@@ -667,7 +781,7 @@ btnViewImgAfter  ?.addEventListener('click', ()=> openLightbox(editImgAfterData.
 imgViewerClose   ?.addEventListener('click', closeLightbox);
 imgViewer        ?.addEventListener('click', (e)=>{ if(e.target===imgViewer) closeLightbox(); });
 
-/* ===== URL Params ===== */
+/* ===== URL Params (opsional) ===== */
 (function applyURLParams(){
   if (!window.URLSearchParams || !form) return;
   const q = new URLSearchParams(location.search);
@@ -691,7 +805,6 @@ imgViewer        ?.addEventListener('click', (e)=>{ if(e.target===imgViewer) clo
   refresh();
   calcSim();
 
-  // tombol Projects di toolbar
   openProjectsBtn?.addEventListener('click', openProjects);
   closeProjects?.addEventListener('click', closeProjectsModal);
 })();
