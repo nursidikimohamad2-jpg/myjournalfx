@@ -327,16 +327,27 @@ function refresh(){
 /* ===== CRUD data ===== */
 function addTrade(obj){ 
   const data = load(); 
-  data.push(obj);         // tambah di bawah
+  data.push(obj);   
   save(data); 
-  renderTrades();         // render ulang tabel
-  
-  // === scroll otomatis ke bawah ===
+
+  // 🔄 panggil fungsi yang menggambar ulang tabel (sesuaikan dengan milikmu)
+  if (typeof refresh === 'function') {
+    refresh();
+  } else if (typeof renderTrades === 'function') {
+    renderTrades();
+  } else if (typeof renderTable === 'function') {
+    renderTable();
+  }
+
+  // 📜 scroll otomatis ke bawah tabel setelah render
   const tbl = document.querySelector('.table-scroll');
   if (tbl) {
-    setTimeout(() => { tbl.scrollTo({ top: tbl.scrollHeight, behavior: 'smooth' }); }, 100);
+    setTimeout(() => {
+      tbl.scrollTo({ top: tbl.scrollHeight, behavior: 'smooth' });
+    }, 100);
   }
 }
+
 
 
 function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
