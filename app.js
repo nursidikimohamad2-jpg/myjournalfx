@@ -37,7 +37,7 @@ const confirmSaveProject = $('#confirmSaveProject');
 /* ===== Edit Modal + Gambar ===== */
 const editModal = $('#editModal'), editForm = $('#editForm'), editCancel = $('#editCancel');
 
-// upload controls (already exist in HTML)
+// upload controls (sudah ada di HTML)
 const editImgBefore = $('#editImgBefore');
 const editImgBeforeData = $('#editImgBeforeData');
 const editImgBeforePreview = $('#editImgBeforePreview');
@@ -79,6 +79,12 @@ const nowISO    = () => new Date().toISOString();
 const fmtMoney  = n => (isFinite(n) ? n.toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2}) : '0.00');
 const slugify   = s => (s||'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'') || 'report';
 
+/* --- helper robust: cari elemen symbol by name atau id --- */
+function getSymbolEl(formEl){
+  if(!formEl) return null;
+  return formEl.querySelector('[name="symbol"], #symbol, #editSymbol');
+}
+
 /* =========================================================
    LIST SYMBOL + DROPDOWN
    ========================================================= */
@@ -92,20 +98,35 @@ const SYMBOLS = [
   "XAUUSD","XAGUSD","US100"
 ];
 
+function populateSelectOptions(selectEl, list){
+  selectEl.innerHTML = '';
+  const ph = document.createElement('option');
+  ph.value=''; ph.textContent='-- pilih symbol --'; ph.disabled=true; ph.selected=true;
+  selectEl.appendChild(ph);
+  for (const s of list){
+    const opt = document.createElement('option');
+    opt.value = s; opt.textContent = s;
+    selectEl.appendChild(opt);
+  }
+}
+
 /* Ganti input symbol → <select> pada form utama (tanpa edit index.html) */
 function ensureSymbolDropdownForAdd(){
   if (!form) return;
-  const old = form.querySelector('[name="symbol"]');
+  const old = getSymbolEl(form);
   if (!old) return;
-  if (old.tagName.toLowerCase() === 'select') { populateSelectOptions(old, SYMBOLS); return; }
+
+  if (old.tagName.toLowerCase() === 'select') {
+    populateSelectOptions(old, SYMBOLS);
+    if (!old.name) old.name = 'symbol';
+    return;
+  }
 
   const sel = document.createElement('select');
-  sel.id = old.id || 'symbol'; sel.name = old.name || 'symbol';
-  sel.className = old.className; sel.required = true;
-
-  const ph = document.createElement('option');
-  ph.value = ''; ph.textContent = '-- pilih symbol --'; ph.disabled = true; ph.selected = true;
-  sel.appendChild(ph);
+  sel.id = old.id || 'symbol';
+  sel.name = old.name || 'symbol';
+  sel.className = old.className;
+  sel.required = true;
 
   populateSelectOptions(sel, SYMBOLS);
 
@@ -118,35 +139,27 @@ function ensureSymbolDropdownForAdd(){
 /* Ganti input symbol → <select> pada modal edit */
 function ensureSymbolDropdownForEdit(){
   if (!editForm) return;
-  const old = editForm.querySelector('[name="symbol"]');
+  const old = getSymbolEl(editForm);
   if (!old) return;
-  if (old.tagName.toLowerCase() === 'select') { populateSelectOptions(old, SYMBOLS); return; }
+
+  if (old.tagName.toLowerCase() === 'select') {
+    populateSelectOptions(old, SYMBOLS);
+    if (!old.name) old.name = 'symbol';
+    return;
+  }
 
   const sel = document.createElement('select');
-  sel.name = 'symbol'; sel.id = old.id || 'editSymbol';
-  sel.className = old.className; sel.required = true;
-
-  const ph = document.createElement('option');
-  ph.value=''; ph.textContent='-- pilih symbol --'; ph.disabled=true; ph.selected=true;
-  sel.appendChild(ph);
+  sel.id = old.id || 'editSymbol';
+  sel.name = old.name || 'symbol';
+  sel.className = old.className;
+  sel.required = true;
 
   populateSelectOptions(sel, SYMBOLS);
+
   const val = (old.value || '').toUpperCase().replace(/[^A-Z]/g,'');
   if (val && SYMBOLS.includes(val)) sel.value = val;
 
   old.replaceWith(sel);
-}
-
-function populateSelectOptions(selectEl, list){
-  selectEl.innerHTML = '';
-  const ph = document.createElement('option');
-  ph.value=''; ph.textContent='-- pilih symbol --'; ph.disabled=true; ph.selected=true;
-  selectEl.appendChild(ph);
-  for (const s of list){
-    const opt = document.createElement('option');
-    opt.value = s; opt.textContent = s;
-    selectEl.appendChild(opt);
-  }
 }
 
 /* =========================================================
@@ -170,17 +183,25 @@ function toFixedBy(n, prec){ return Number.isFinite(n) ? Number(n).toFixed(prec)
 /* Terapkan step & placeholder sesuai simbol — FORM TAMBAH */
 function applyPriceFormatToAddForm(){
   if(!form) return;
-  const p = precisionForSymbol(form.symbol.value);
+  const symEl = getSymbolEl(form);
+  const symVal = symEl ? symEl.value : '';
+  const p = precisionForSymbol(symVal);
   const step = stepForPrecision(p);
   const ph = p>0 ? ('0.' + '0'.repeat(p)) : '0';
   if(form.entry_price){ form.entry_price.step = step; form.entry_price.placeholder = ph; }
   if(form.stop_loss){   form.stop_loss.step   = step; form.stop_loss.placeholder   = ph; }
-  calcPreview(Number(form.entry_price.value), Number(form.stop_loss.value), form.side.value, p);
+
+  const entry = Number(form.entry_price?.value);
+  const sl    = Number(form.stop_loss?.value);
+  const side  = form.side?.value || 'LONG';
+  calcPreview(entry, sl, side, p);
 }
 /* Terapkan step & placeholder — MODAL EDIT */
 function applyPriceFormatToEditForm(){
   if(!editForm) return;
-  const p = precisionForSymbol(editForm.symbol.value);
+  const symEl = getSymbolEl(editForm);
+  const symVal = symEl ? symEl.value : '';
+  const p = precisionForSymbol(symVal);
   const step = stepForPrecision(p);
   const ph = p>0 ? ('0.' + '0'.repeat(p)) : '0';
   if(editForm.entry_price){ editForm.entry_price.step = step; editForm.entry_price.placeholder = ph; }
@@ -212,7 +233,12 @@ function updateActiveProjectUI(){
 /* ===== PREVIEW (mengikuti presisi simbol) ===== */
 function calcPreview(entry, sl, side, _precFromSymbol){
   const ok = Number.isFinite(entry) && Number.isFinite(sl);
-  const prec = (_precFromSymbol ?? precisionForSymbol(form?.symbol?.value || ''));
+  let prec = _precFromSymbol;
+  if (prec == null) {
+    const symEl = getSymbolEl(form);
+    const symVal = symEl ? symEl.value : '';
+    prec = precisionForSymbol(symVal);
+  }
   if (!ok){
     rPointEl.textContent='0.00';
     tp1El.textContent=tp2El.textContent=tp3El.textContent='0.00';
@@ -296,8 +322,8 @@ function rowHTML(t){
 /* ===== refresh UI + prob & sim ===== */
 function refresh(){
   const data = load();
-  tradeList.innerHTML = '';
-  totalTxBox.textContent = String(data.length);
+  if (tradeList) tradeList.innerHTML = '';
+  if (totalTxBox) totalTxBox.textContent = String(data.length);
 
   let tR1=0,tR2=0,tR3=0, nDone=0, n1=0, n2=0, n3=0, rnet=0;
 
@@ -305,7 +331,7 @@ function refresh(){
     const tr = document.createElement('tr');
     tr.className = 'hover:bg-slate-900/40 transition-colors';
     tr.innerHTML = rowHTML(t);
-    tradeList.appendChild(tr);
+    tradeList?.appendChild(tr);
 
     const [r1,r2,r3] = rByResult(t.result||'');
     tR1+=r1; tR2+=r2; tR3+=r3;
@@ -315,11 +341,13 @@ function refresh(){
     if(lvl!==null){ nDone++; if(lvl>=1) n1++; if(lvl>=2) n2++; if(lvl>=3) n3++; }
   }
 
-  const setTot=(el,v)=>{ el.textContent=String(v); el.className='px-3 py-2 text-right font-semibold '+(v>0?'text-emerald-400':(v<0?'text-rose-400':'')); };
+  const setTot=(el,v)=>{ if(!el) return; el.textContent=String(v); el.className='px-3 py-2 text-right font-semibold '+(v>0?'text-emerald-400':(v<0?'text-rose-400':'')); };
   setTot(totR1El,tR1); setTot(totR2El,tR2); setTot(totR3El,tR3);
 
   const pct = x => (nDone>0?Math.round(x/nDone*100):0)+'%';
-  pBox1.textContent = pct(n1); pBox2.textContent = pct(n2); pBox3.textContent = pct(n3);
+  if (pBox1) pBox1.textContent = pct(n1);
+  if (pBox2) pBox2.textContent = pct(n2);
+  if (pBox3) pBox3.textContent = pct(n3);
 
   calcSim(rnet); // update simulasi balance
 }
@@ -337,7 +365,10 @@ function openEdit(id){
   // isi form
   editForm.id.value = id;
   editForm.setup_date.value = toDTInput(t.setup_date || '');
-  editForm.symbol.value = normalizeSymbol(t.symbol || '');
+
+  const symEl = getSymbolEl(editForm);
+  if (symEl) symEl.value = normalizeSymbol(t.symbol || '');
+
   editForm.side.value = t.side || 'LONG';
   editForm.entry_price.value = t.entry_price ?? 0;
   editForm.stop_loss.value  = t.stop_loss  ?? 0;
@@ -349,14 +380,14 @@ function openEdit(id){
   applyPriceFormatToEditForm();
   editModal.classList.remove('hidden'); editModal.classList.add('flex');
 }
-function closeEdit(){ editModal.classList.add('hidden'); editModal.classList.remove('flex'); }
+function closeEdit(){ editModal?.classList.add('hidden'); editModal?.classList.remove('flex'); }
 
 /* ===== projects modal ===== */
 function renderProjects(){
   const items = loadProj();
-  projectsList.innerHTML = '';
+  if (projectsList) projectsList.innerHTML = '';
   if(items.length===0){
-    projectsList.innerHTML = `<div class="text-slate-400">Belum ada project.</div>`;
+    projectsList && (projectsList.innerHTML = `<div class="text-slate-400">Belum ada project.</div>`);
     return;
   }
   for(const p of items){
@@ -375,38 +406,39 @@ function renderProjects(){
         <button data-id="${p.id}" data-act="del" class="bg-rose-600 hover:bg-rose-500 text-white px-3 py-1 rounded-lg">Hapus</button>
       </div>
     `;
-    projectsList.appendChild(div);
+    projectsList?.appendChild(div);
   }
 }
-function openProjects(){ renderProjects(); projectsModal.classList.remove('hidden'); projectsModal.classList.add('flex'); }
-function closeProjectsModal(){ projectsModal.classList.add('hidden'); projectsModal.classList.remove('flex'); }
+function openProjects(){ renderProjects(); projectsModal?.classList.remove('hidden'); projectsModal?.classList.add('flex'); }
+function closeProjectsModal(){ projectsModal?.classList.add('hidden'); projectsModal?.classList.remove('flex'); }
 
 /* ===== save project modal ===== */
 function openSaveProjectModal(){
-  saveProjectName.value = '';
-  saveProjectNotes.value = '';
-  saveProjectModal.classList.remove('hidden'); saveProjectModal.classList.add('flex');
-  setTimeout(()=>saveProjectName.focus(),50);
+  if (saveProjectName) saveProjectName.value = '';
+  if (saveProjectNotes) saveProjectNotes.value = '';
+  saveProjectModal?.classList.remove('hidden'); saveProjectModal?.classList.add('flex');
+  setTimeout(()=>saveProjectName?.focus(),50);
 }
-function closeSaveProjectModal(){ saveProjectModal.classList.add('hidden'); saveProjectModal.classList.remove('flex'); }
+function closeSaveProjectModal(){ saveProjectModal?.classList.add('hidden'); saveProjectModal?.classList.remove('flex'); }
 
 /* ===== events: ADD FORM ===== */
-form?.addEventListener('input', ()=>{
-  applyPriceFormatToAddForm();
-});
+form?.addEventListener('input', ()=>{ applyPriceFormatToAddForm(); });
+
 form?.addEventListener('change', e=>{
-  if (e.target && e.target.name === 'symbol') applyPriceFormatToAddForm();
+  const t = e.target;
+  if (!t) return;
+  if (t.name === 'symbol' || t.id === 'symbol') applyPriceFormatToAddForm();
 });
 
-/* validasi + tambah row  (TIDAK reset modal/risk) */
 form?.addEventListener('submit', e=>{
   e.preventDefault();
   const keepSettings = getSettings();
 
-  const symbol = normalizeSymbol(form.symbol.value || '');
-  const side   = form.side.value;
-  const entry  = Number(form.entry_price.value);
-  const sl     = Number(form.stop_loss.value);
+  const symEl = getSymbolEl(form);
+  const symbol = normalizeSymbol(symEl ? symEl.value : '');
+  const side   = form.side?.value || 'LONG';
+  const entry  = Number(form.entry_price?.value);
+  const sl     = Number(form.stop_loss?.value);
   const prec   = precisionForSymbol(symbol);
 
   if (!symbol || !Number.isFinite(entry) || !Number.isFinite(sl)) {
@@ -424,56 +456,60 @@ form?.addEventListener('submit', e=>{
     side,
     entry_price: roundTo(entry, prec),
     stop_loss:   roundTo(sl,   prec),
-    setup_date: form.setup_date.value || '',
-    note: form.note.value || '',
+    setup_date: form.setup_date?.value || '',
+    note: form.note?.value || '',
     result: '',
     // field lampiran default
     img_before_data: '',
     img_after_data: ''
   });
 
-  form.reset();
+  form.reset?.();
   setSettings(keepSettings);
   calcSim();
-  rPointEl.textContent = tp1El.textContent = tp2El.textContent = tp3El.textContent = '0.00';
+  if (rPointEl) rPointEl.textContent = '0.00';
+  if (tp1El) tp1El.textContent = '0.00';
+  if (tp2El) tp2El.textContent = '0.00';
+  if (tp3El) tp3El.textContent = '0.00';
   refresh();
 });
 
 /* tombol reset form -> jangan hapus modal/risk */
-form?.addEventListener('reset', ()=>{
-  const s = loadSettings();
-  setTimeout(()=>{ setSettings(s); calcSim(); }, 0);
-});
+form?.addEventListener('reset', ()=>{ const s = loadSettings(); setTimeout(()=>{ setSettings(s); calcSim(); }, 0); });
 
 /* ===== events: TABLE & EDIT ===== */
-tradeList.addEventListener('change', e=>{
-  const sel = e.target.closest('select[data-id]');
+tradeList?.addEventListener('change', e=>{
+  const sel = e.target.closest?.('select[data-id]');
   if(sel){ updateTrade(sel.dataset.id, { [sel.dataset.field||'result']: sel.value }); refresh(); }
 });
-tradeList.addEventListener('click', e=>{
-  const btn = e.target.closest('button[data-action]'); if(!btn) return;
+tradeList?.addEventListener('click', e=>{
+  const btn = e.target.closest?.('button[data-action]'); if(!btn) return;
   const id = btn.dataset.id;
   if(btn.dataset.action==='del'){ deleteTrade(id); refresh(); }
   if(btn.dataset.action==='edit'){ openEdit(id); }
 });
 
 editCancel?.addEventListener('click', closeEdit);
-editForm?.symbol?.addEventListener('input', applyPriceFormatToEditForm);
+
 editForm?.addEventListener('change', e=>{
-  if (e.target && (e.target.name === 'symbol')) applyPriceFormatToEditForm();
+  const t = e.target;
+  if (!t) return;
+  if (t.name === 'symbol' || t.id === 'editSymbol' || t.id === 'symbol') applyPriceFormatToEditForm();
 });
+
 editForm?.addEventListener('submit', e=>{
   e.preventDefault();
 
-  const symbol = normalizeSymbol(editForm.symbol.value || '');
+  const symEl = getSymbolEl(editForm);
+  const symbol = normalizeSymbol(symEl ? symEl.value : '');
   const prec   = precisionForSymbol(symbol);
 
   updateTrade(editForm.id.value, {
-    setup_date: editForm.setup_date.value || '',
+    setup_date: editForm.setup_date?.value || '',
     symbol,
-    side: editForm.side.value,
-    entry_price: roundTo(Number(editForm.entry_price.value)||0, prec),
-    stop_loss:   roundTo(Number(editForm.stop_loss.value)||0,  prec),
+    side: editForm.side?.value || 'LONG',
+    entry_price: roundTo(Number(editForm.entry_price?.value)||0, prec),
+    stop_loss:   roundTo(Number(editForm.stop_loss?.value)||0,  prec),
     // simpan lampiran base64 yang tertampung di hidden input
     img_before_data: (editImgBeforeData?.value || ''),
     img_after_data:  (editImgAfterData?.value || '')
@@ -494,7 +530,7 @@ exportBtn?.addEventListener('click', ()=>{
   setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(a.href); },0);
 });
 importInput?.addEventListener('change', async e=>{
-  const f = e.target.files[0]; if(!f) return;
+  const f = e.target.files?.[0]; if(!f) return;
   try { const txt = await f.text(); const data = JSON.parse(txt); if(Array.isArray(data)) save(data); } catch {}
   importInput.value=''; refresh();
 });
@@ -511,19 +547,12 @@ cancelSaveProject?.addEventListener('click', closeSaveProjectModal);
 
 confirmSaveProject?.addEventListener('click', ()=>{
   const trades = load();
-  if (!trades.length) {
-    alert('Belum ada data jurnal untuk disimpan.');
-    return;
-  }
+  if (!trades.length) { alert('Belum ada data jurnal untuk disimpan.'); return; }
 
-  const name = (saveProjectName.value||'').trim();
-  if (!name) {
-    alert('Nama Project wajib diisi.');
-    saveProjectName.focus();
-    return;
-  }
+  const name = (saveProjectName?.value||'').trim();
+  if (!name) { alert('Nama Project wajib diisi.'); saveProjectName?.focus(); return; }
 
-  const notes = (saveProjectNotes.value||'').trim();
+  const notes = (saveProjectNotes?.value||'').trim();
   const projects = loadProj();
   const existing = projects.find(p => p.name.toLowerCase() === name.toLowerCase());
   const snapshot = JSON.parse(JSON.stringify(trades));
@@ -561,7 +590,7 @@ closeProjects?.addEventListener('click', closeProjectsModal);
 
 /* tombol dalam daftar projects */
 projectsList?.addEventListener('click', e=>{
-  const btn = e.target.closest('button[data-act]'); if(!btn) return;
+  const btn = e.target.closest?.('button[data-act]'); if(!btn) return;
   const id = btn.dataset.id; const projects = loadProj(); const item = projects.find(p=>p.id===id); if(!item) return;
 
   if(btn.dataset.act==='open'){
@@ -626,19 +655,26 @@ function calcSim(){
     }
   };
 
-  set('symbol', v => v || '');
   set('side', v => (v==='SHORT'?'SHORT':'LONG'));
   set('setup_date', v => v || '');
   set('entry_price', v => v || '');
   set('stop_loss', v => v || '');
   set('note', v => v || '');
 
+  // pastikan dropdown diganti dulu
   ensureSymbolDropdownForAdd();
+
+  // set symbol aman untuk id/name
+  const symEl = getSymbolEl(form);
+  if (symEl && q.has('symbol')) {
+    symEl.value = (q.get('symbol') || '').toUpperCase();
+  }
+
   applyPriceFormatToAddForm();
 })();
 
 /* =====================================================
-   EXPORT HTML (ringkasan + simulasi balance) — versi lama
+   EXPORT HTML (ringkasan + simulasi balance)
    ===================================================== */
 
 function downloadTextFile(filename, text, mime = 'text/html') {
@@ -758,7 +794,7 @@ function computeStats(trades){
   };
 }
 
-/* ===== template laporan HTML lama (rapi & seragam) ===== */
+/* ===== template laporan HTML (rapi & seragam) ===== */
 function buildReportHTML({ projectName, createdAt, stats }) {
   const css = `
   :root{--bg:#0b1220;--panel:#0f172a;--text:#e2e8f0;--muted:#94a3b8;--pos:#10b981;--neg:#f43f5e}
@@ -767,7 +803,7 @@ function buildReportHTML({ projectName, createdAt, stats }) {
   .wrap{max-width:1024px;margin:0 auto;padding:24px}
   .grid{display:grid;gap:12px}
   .g-4{grid-template-columns:repeat(4,1fr);align-items:stretch}
-  .g-3{grid-template-columns:repeat(3,1fr);align-items:stretch}  /* <— tambahkan grid 3 kolom */
+  .g-3{grid-template-columns:repeat(3,1fr);align-items:stretch}
   .card{
     background:rgba(15,23,42,.9);
     border:1px solid rgba(255,255,255,.08);
@@ -809,7 +845,7 @@ function buildReportHTML({ projectName, createdAt, stats }) {
       <div class="card"><div class="muted">Prob ≥ TP3</div><div class="row"><div class="big">${stats.prob.tp3}%</div><div class="bar"><i style="width:${stats.prob.tp3}%"></i></div></div></div>
     </div>
 
-    <!-- RINGKAS TENGAH: dibikin 3 kolom seragam -->
+    <!-- RINGKAS TENGAH: 3 kolom seragam -->
     <div class="grid g-3" style="margin-bottom:12px">
       <div class="card">
         <div class="muted">ΣR Komponen (R1+R2+R3)</div>
@@ -891,7 +927,7 @@ function buildReportHTML({ projectName, createdAt, stats }) {
   </div></body></html>`;
 }
 
-/* ===== handler tombol Export HTML (lama) ===== */
+/* ===== handler tombol Export HTML ===== */
 exportHtmlBtn?.addEventListener('click', () => {
   try {
     const trades=load();
@@ -913,37 +949,28 @@ exportHtmlBtn?.addEventListener('click', () => {
 });
 
 /* =====================================================
-   EXPORT PRESENTASI (baru) — dengan gambar & card per trade
+   EXPORT PRESENTASI — dengan gambar & card per trade
    ===================================================== */
 
 (function injectExportPresentasiButton(){
   if (!exportHtmlBtn) return;
 
-  // 1) Kalau sudah ada tombol resmi kita, hapus dulu (supaya tidak dobel
-  //    jika file JS ter-load 2x karena cache/bundle)
   const old = document.querySelector('#exportPresentBtn');
   if (old) old.remove();
 
-  // 2) Hapus tombol "kembar" lain yang kebetulan teksnya sama tapi bukan milik kita
-  //    (misal ada tombol manual di HTML). Aman karena kita sisakan hanya yang ber-ID.
   [...document.querySelectorAll('button')]
     .filter(b => b.textContent.trim() === 'Export Presentasi' && b.id !== 'exportPresentBtn')
     .forEach(b => b.remove());
 
-  // 3) Buat tombol resmi
   const btn = document.createElement('button');
   btn.id = 'exportPresentBtn';
   btn.type = 'button';
   btn.className = 'bg-slate-900/70 ring-1 ring-white/10 px-3 py-1 rounded-lg';
   btn.textContent = 'Export Presentasi';
 
-  // sisipkan tepat setelah "Export HTML"
   exportHtmlBtn.insertAdjacentElement('afterend', btn);
-
-  // 4) Pasang handler
   btn.addEventListener('click', exportPresentationHTML);
 })();
-
 
 function exportPresentationHTML(){
   try {
@@ -1007,39 +1034,20 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
   const header = `
     <div>
-     <h1>${projectName}</h1>
-<div class="muted">
-  Rentang: ${stats.range.min || '-'} — ${stats.range.max || '-'} • Disusun otomatis dari RR Journal
-</div>
-</div>
+      <h1>${projectName}</h1>
+      <div class="muted">
+        Rentang: ${stats.range.min || '-'} — ${stats.range.max || '-'} • Disusun otomatis dari RR Journal
+      </div>
+    </div>
 
-<div class="cards">
-  <div class="card">
-    <div class="k">Transaksi</div>
-    <div class="v">${fmt0(stats.total)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">Win / Loss</div>
-    <div class="v">${fmt0(win)} / ${fmt0(loss)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">ΣR (R1+R2+R3)</div>
-    <div class="v ${signClass(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">1R (USD)</div>
-    <div class="v">$${fmt(stats.sim.oneR)}</div>
-  </div>
-
-  <div class="card">
-    <div class="k">P/L (USD)</div>
-    <div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div>
-  </div>
-</div>
-`;
+    <div class="cards">
+      <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
+      <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
+      <div class="card"><div class="k">ΣR (R1+R2+R3)</div><div class="v ${signClass(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div></div>
+      <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
+      <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+    </div>
+  `;
 
   // running P/L & Equity
   const oneR = stats.sim.oneR;
@@ -1122,7 +1130,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 }
 
 /* =====================================================
-   Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
+   Gambar: preview, drag & drop, lightbox + PASTE / URL LINK
    ===================================================== */
 
 const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB aman untuk localStorage
@@ -1185,31 +1193,27 @@ async function fileToBase64(file){
 function setImagePreview(kind, base64){
   if (kind==='before'){
     if (base64){
-      editImgBeforeData.value = base64;
-      editImgBeforePreview.src = base64;
-      editImgBeforePreview.classList.remove('hidden');
-      btnClearImgBefore.classList.remove('hidden');
-      btnViewImgBefore.classList.remove('hidden');
+      if (editImgBeforeData) editImgBeforeData.value = base64;
+      if (editImgBeforePreview){ editImgBeforePreview.src = base64; editImgBeforePreview.classList.remove('hidden'); }
+      btnClearImgBefore?.classList.remove('hidden');
+      btnViewImgBefore?.classList.remove('hidden');
     } else {
-      editImgBeforeData.value = '';
-      editImgBeforePreview.src = '';
-      editImgBeforePreview.classList.add('hidden');
-      btnClearImgBefore.classList.add('hidden');
-      btnViewImgBefore.classList.add('hidden');
+      if (editImgBeforeData) editImgBeforeData.value = '';
+      if (editImgBeforePreview){ editImgBeforePreview.src = ''; editImgBeforePreview.classList.add('hidden'); }
+      btnClearImgBefore?.classList.add('hidden');
+      btnViewImgBefore?.classList.add('hidden');
     }
   } else {
     if (base64){
-      editImgAfterData.value = base64;
-      editImgAfterPreview.src = base64;
-      editImgAfterPreview.classList.remove('hidden');
-      btnClearImgAfter.classList.remove('hidden');
-      btnViewImgAfter.classList.remove('hidden');
+      if (editImgAfterData) editImgAfterData.value = base64;
+      if (editImgAfterPreview){ editImgAfterPreview.src = base64; editImgAfterPreview.classList.remove('hidden'); }
+      btnClearImgAfter?.classList.remove('hidden');
+      btnViewImgAfter?.classList.remove('hidden');
     } else {
-      editImgAfterData.value = '';
-      editImgAfterPreview.src = '';
-      editImgAfterPreview.classList.add('hidden');
-      btnClearImgAfter.classList.add('hidden');
-      btnViewImgAfter.classList.add('hidden');
+      if (editImgAfterData) editImgAfterData.value = '';
+      if (editImgAfterPreview){ editImgAfterPreview.src = ''; editImgAfterPreview.classList.add('hidden'); }
+      btnClearImgAfter?.classList.add('hidden');
+      btnViewImgAfter?.classList.add('hidden');
     }
   }
 }
@@ -1234,7 +1238,6 @@ function setupDragDrop(areaEl, inputEl, kind){
       if (b64) setImagePreview(kind, b64);
       return;
     }
-    // Text/URL drop
     const t = dt.getData('text');
     if(isLikelyImageURL(t)){
       const b64 = await urlToBase64Smart(t.trim());
@@ -1247,20 +1250,20 @@ function setupDragDrop(areaEl, inputEl, kind){
 /* lightbox */
 function openLightbox(src){
   if (!src) return;
-  imgViewerImg.src = src;
-  imgViewer.classList.remove('hidden'); imgViewer.classList.add('flex');
+  if (imgViewerImg) imgViewerImg.src = src;
+  imgViewer?.classList.remove('hidden'); imgViewer?.classList.add('flex');
 }
 function closeLightbox(){
-  imgViewer.classList.add('hidden'); imgViewer.classList.remove('flex');
-  imgViewerImg.src = '';
+  imgViewer?.classList.add('hidden'); imgViewer?.classList.remove('flex');
+  if (imgViewerImg) imgViewerImg.src = '';
 }
 
 editImgBefore?.addEventListener('change', ()=> { lastImgKind='before'; handlePickFile(editImgBefore,'before'); });
 editImgAfter?.addEventListener('change',  ()=> { lastImgKind='after';  handlePickFile(editImgAfter,'after'); });
 btnClearImgBefore?.addEventListener('click', ()=> setImagePreview('before',''));
 btnClearImgAfter?.addEventListener('click',  ()=> setImagePreview('after',''));
-btnViewImgBefore?.addEventListener('click',   ()=> openLightbox(editImgBeforeData.value));
-btnViewImgAfter?.addEventListener('click',    ()=> openLightbox(editImgAfterData.value));
+btnViewImgBefore?.addEventListener('click',   ()=> openLightbox(editImgBeforeData?.value));
+btnViewImgAfter?.addEventListener('click',    ()=> openLightbox(editImgAfterData?.value));
 imgViewerClose?.addEventListener('click', closeLightbox);
 imgViewer?.addEventListener('click', e=>{ if(e.target===imgViewer) closeLightbox(); });
 
@@ -1268,7 +1271,7 @@ imgViewer?.addEventListener('click', e=>{ if(e.target===imgViewer) closeLightbox
 setupDragDrop(dropBefore, editImgBefore, 'before');
 setupDragDrop(dropAfter,  editImgAfter,  'after');
 
-/* ===== (BARU) — Tambah field URL untuk gambar + Paste global ===== */
+/* ===== URL bar untuk gambar + Paste global ===== */
 function injectUrlBarUnder(areaEl, kind){
   if(!areaEl) return;
   const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
@@ -1276,17 +1279,17 @@ function injectUrlBarUnder(areaEl, kind){
 
   const wrap = document.createElement('div');
   wrap.className = 'mt-2 flex gap-2';
- wrap.innerHTML = `
-  <input id="${id}" type="url" 
-    placeholder="Tempel link gambar (https://… atau data:image/…)" 
-    class="w-full rounded-xl border border-slate-300 bg-white text-slate-900 
-           px-3 py-2 text-sm placeholder-slate-500 
-           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-  <button type="button" 
-    class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">
-    Muat
-  </button>
-`;
+  wrap.innerHTML = `
+    <input id="${id}" type="url" 
+      placeholder="Tempel link gambar (https://… atau data:image/…)" 
+      class="w-full rounded-xl border border-slate-300 bg-white text-slate-900 
+             px-3 py-2 text-sm placeholder-slate-500 
+             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+    <button type="button" 
+      class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">
+      Muat
+    </button>
+  `;
 
   areaEl.insertAdjacentElement('afterend', wrap);
 
@@ -1302,15 +1305,13 @@ function injectUrlBarUnder(areaEl, kind){
 
   input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
   btn.addEventListener('click', loader);
-
   input.addEventListener('focus', ()=>{ lastImgKind = kind; });
 }
 
-// inject URL bar bila ada drop zone
 injectUrlBarUnder(dropBefore, 'before');
 injectUrlBarUnder(dropAfter,  'after');
 
-// Global paste: jika ada URL gambar di clipboard, muat ke area terakhir yang aktif
+// Paste global URL gambar
 window.addEventListener('paste', async (e)=>{
   const t = (e.clipboardData || window.clipboardData)?.getData?.('text') || '';
   if (isLikelyImageURL(t)){
@@ -1335,4 +1336,3 @@ window.addEventListener('paste', async (e)=>{
   updateActiveProjectUI();
   calcSim();
 })();
-ini file js saya
