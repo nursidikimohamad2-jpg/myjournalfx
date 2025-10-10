@@ -1310,154 +1310,28 @@ function injectUrlBarUnder(areaEl, kind){
 injectUrlBarUnder(dropBefore, 'before');
 injectUrlBarUnder(dropAfter,  'after');
 
-/* =========================================================
-   === Helpers gambar & fallback TradingView (CORS-safe) ===
-   ========================================================= */
-
-// ingat area gambar terakhir yang aktif (default 'before')
-let lastImgKind = 'before';
-
-// deteksi URL yang *kemungkinan* gambar
-function isLikelyImageURL(t) {
-  if (!t || typeof t !== 'string') return false;
-  const s = t.trim();
-  if (/^data:image\//i.test(s)) return true;         // dataURL
-  if (/^https?:\/\//i.test(s) && /\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(s)) return true; // file langsung
-  // TradingView dkk: sering /x/… tanpa ekstensi → tetap izinkan
-  if (/^https?:\/\/.*tradingview\./i.test(s)) return true;
-  return false;
-}
-
-// coba fetch→base64; bila CORS blok, kembalikan 'URL:<asli>'
-async function urlToBase64Smart(url) {
-  if (!url) return '';
-  const u = url.trim();
-  if (/^data:image\//i.test(u)) return u; // sudah dataURL
-
-  try {
-    const res = await fetch(u, { mode: 'cors' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const blob = await res.blob();
-    if (!/^image\//i.test(blob.type)) throw new Error('Not image');
-    const b64 = await new Promise((resolv, rej) => {
-      const fr = new FileReader();
-      fr.onload = () => resolv(fr.result);
-      fr.onerror = rej;
-      fr.readAsDataURL(blob);
-    });
-    return b64; // sukses — base64
-  } catch (err) {
-    // gagal fetch/CORS → pakai URL langsung (preview via <img src=URL>)
-    return 'URL:' + u;
+// Global paste: jika ada URL gambar di clipboard, muat ke area terakhir yang aktif
+window.addEventListener('paste', async (e)=>{
+  const t = (e.clipboardData || window.clipboardData)?.getData?.('text') || '';
+  if (isLikelyImageURL(t)){
+    const b64 = await urlToBase64Smart(t.trim());
+    if (b64) setImagePreview(lastImgKind, b64);
   }
-}
+});
 
-// cari elemen zona gambar berdasarkan "kind"
-function getImgZone(kind = 'before') {
-  // urutan prioritas selektor agar tidak merusak struktur Anda
-  return (
-    document.querySelector(`.img-dropzone[data-slot="${kind}"]`) ||
-    document.querySelector(`[data-img-kind="${kind}"]`) ||
-    document.getElementById(kind === 'before' ? 'beforeDropzone' : 'afterDropzone') ||
-    document.querySelector(`.img-dropzone.${kind}`) || // fallback
-    null
-  );
-}
+/* ===== Init ===== */
+(function init(){
+  ensureSymbolDropdownForAdd();
+  ensureSymbolDropdownForEdit();
 
-// set preview ke zona + simpan ke dataset
-function setImagePreview(kind, srcOrB64) {
-  const zone = getImgZone(kind) || getImgZone(lastImgKind) || getImgZone('before') || getImgZone('after');
-  if (!zone || !srcOrB64) return;
+  const s = loadSettings();
+  if(baseInput) baseInput.value = (s.base ?? '');
+  if(riskInput) riskInput.value = (s.risk ?? '');
+  baseInput?.addEventListener('input', ()=> calcSim());
+  riskInput?.addEventListener('input', ()=> calcSim());
 
-  let src = srcOrB64;
-  // jika urlToBase64Smart mengembalikan 'URL:…'
-  if (typeof srcOrB64 === 'string' && srcOrB64.startsWith('URL:')) {
-    const url = srcOrB64.slice(4);
-    zone.dataset.imgUrl = url;
-    delete zone.dataset.imgB64;
-    src = url;
-  } else {
-    zone.dataset.imgB64 = srcOrB64; // dataURL
-    delete zone.dataset.imgUrl;
-  }
-
-  let img = zone.querySelector('img.preview');
-  if (!img) {
-    img = document.createElement('img');
-    img.className = 'preview';
-    img.alt = 'preview';
-    img.style.cssText = 'display:block;width:100%;height:auto;border-radius:10px;margin-top:8px';
-    zone.appendChild(img);
-  }
-  img.src = src;
-
-  // beri tahu app lain jika perlu
-  zone.dispatchEvent(new CustomEvent('rr:image-updated', {
-    bubbles: true,
-    detail: { kind, src, isBase64: !!zone.dataset.imgB64 }
-  }));
-}
-
-// catat zona terakhir saat user berinteraksi
-(function wireLastKindTracker() {
-  const zones = document.querySelectorAll('.img-dropzone[data-slot], [data-img-kind], #beforeDropzone, #afterDropzone');
-  zones.forEach(z => {
-    const k = z.getAttribute('data-slot') || z.getAttribute('data-img-kind') ||
-              (z.id === 'beforeDropzone' ? 'before' : z.id === 'afterDropzone' ? 'after' : null);
-    if (!k) return;
-    if (!z.hasAttribute('tabindex')) z.setAttribute('tabindex','0');
-    const mark = () => { lastImgKind = k; };
-    z.addEventListener('focus', mark);
-    z.addEventListener('click', mark);
-    z.addEventListener('mouseenter', mark);
-  });
+  applyPriceFormatToAddForm();
+  refresh();
+  updateActiveProjectUI();
+  calcSim();
 })();
-
-// dukung paste file langsung ke input[type=file] di dalam zona (non-invasif)
-(function wireZonePasteToInputFile() {
-  const zones = document.querySelectorAll('.img-dropzone, [data-img-kind], #beforeDropzone, #afterDropzone');
-  zones.forEach(zone => {
-    if (!zone.hasAttribute('tabindex')) zone.setAttribute('tabindex','0');
-    zone.addEventListener('click', () => zone.focus());
-
-    zone.addEventListener('paste', (e) => {
-      const items = e.clipboardData?.items || [];
-      for (const it of items) {
-        if (it.kind !== 'file') continue;
-        const file = it.getAsFile();
-        if (!file || !/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
-
-        e.preventDefault();
-
-        // suntik ke input[type=file] agar seluruh logika lama (onchange) tetap jalan
-        const input = zone.querySelector('input[type="file"]');
-        if (input) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          input.files = dt.files;
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // preview langsung (jaga-jaga jika onchange tidak mengatur preview)
-        const url = URL.createObjectURL(file);
-        const kind =
-          zone.getAttribute('data-slot') ||
-          zone.getAttribute('data-img-kind') ||
-          (zone.id === 'beforeDropzone' ? 'before' : zone.id === 'afterDropzone' ? 'after' : lastImgKind);
-        setImagePreview(kind, 'URL:' + url); // sementara URL blob; onchange bisa menimpa
-        break;
-      }
-    });
-  });
-})();
-
-/* ============================
-   === Integrasi saat Simpan ===
-   ============================
-   Contoh cara membaca nilai gambar:
-   const beforeZone = getImgZone('before');
-   const afterZone  = getImgZone('after');
-   const beforeImg  = (beforeZone?.dataset.imgB64) || (beforeZone?.dataset.imgUrl) || null;
-   const afterImg   = (afterZone?.dataset.imgB64)  || (afterZone?.dataset.imgUrl)  || null;
-   // simpan ke record trade Anda.
-*/
