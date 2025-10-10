@@ -995,18 +995,17 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   const loss = stats.results.counts.SL;
 
   const header = `
-    <div>
-      <h1>${projectName}</h1>
-      <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
-    </div>
-    <div class="cards">
-      <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
-      <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
-      <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
-      <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
-      <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
-    </div>
-  `;
+   <div>
+  <h1>${projectName}</h1>
+  <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
+</div>
+<div class="cards">
+  <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
+  <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
+  <div class="card"><div class="k">ΣR (R1+R2+R3)</div><div class="v ${signClass(stats.rsumComponentsTotal)}">${stats.rsumComponentsTotal}</div></div>
+  <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
+  <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+</div>
 
   // running P/L & Equity
   const oneR = stats.sim.oneR;
@@ -1243,10 +1242,20 @@ function injectUrlBarUnder(areaEl, kind){
 
   const wrap = document.createElement('div');
   wrap.className = 'mt-2 flex gap-2';
-  wrap.innerHTML = `
-    <input id="${id}" type="url" placeholder="Tempel link gambar (https://… atau data:image/…)" class="flex-1 rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm" />
-    <button type="button" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Muat</button>
-  `;
+ wrap.innerHTML = `
+  <input id="${id}" type="url"
+    placeholder="Tempel link gambar (https://… atau data:image/…)"
+    class="w-full rounded-xl border border-slate-300 bg-white text-slate-900 
+           px-3 py-2 text-sm placeholder-slate-500 
+           focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+           dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700" />
+  <button type="button"
+    class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">
+    Muat
+  </button>
+`;
+
+
   areaEl.insertAdjacentElement('afterend', wrap);
 
   const input = wrap.querySelector('input');
@@ -1264,66 +1273,16 @@ function injectUrlBarUnder(areaEl, kind){
 
   input.addEventListener('focus', ()=>{ lastImgKind = kind; });
 }
+// inject URL bar bila ada drop zone (bisa tetap di init atau di openEdit)
+injectUrlBarUnder(dropBefore, 'before');
+injectUrlBarUnder(dropAfter,  'after');
 
-// inject URL bar bila ada drop zone
-function injectUrlBarUnder(areaEl, kind){
-  if(!areaEl) return;
-  const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
-  if (document.getElementById(id)) return; // sudah ada
-
-  // ambil kelas dari input angka agar tampilannya identik
-  const mimicClass =
-    (form?.entry_price?.className || editForm?.entry_price?.className) ||
-    'w-full rounded-xl border border-slate-300 bg-slate-50 text-slate-900 ' +
-    'px-3 py-2 text-sm placeholder-slate-500 focus:outline-none ' +
-    'focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-    'dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'mt-2 flex items-center gap-2';
-
-  wrap.innerHTML = `
-    <input id="${id}" type="url"
-      placeholder="Tempel link gambar (https://… atau data:image/…)"
-      class="${mimicClass}" />
-    <button type="button"
-      class="h-[38px] px-3 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:ring-2 focus:ring-blue-500">
-      Muat
-    </button>
-  `;
-  areaEl.insertAdjacentElement('afterend', wrap);
-
-  const input = wrap.querySelector('input');
-  const btn   = wrap.querySelector('button');
-
-  const loader = async () => {
-    const url = (input.value||'').trim();
-    if (!isLikelyImageURL(url)) { alert('Masukkan URL file gambar (.png/.jpg/.webp) atau data:image/…'); input.focus(); return; }
-    const b64 = await urlToBase64Smart(url);
-    if (b64) setImagePreview(kind, b64);
-  };
-
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
-  btn.addEventListener('click', loader);
-
-  // agar paste/link diarahkan ke area ini
-  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-
-  // samakan tinggi input jika ada referensi
-  const ref = form?.entry_price || editForm?.entry_price;
-  if (ref) {
-    const h = getComputedStyle(ref).height;
-    if (h && h !== 'auto') input.style.height = h;
-  }
-}
-
-';
-// Paste global: dukung gambar langsung & link gambar (auto-load)
+// Paste global: dukung gambar langsung & link gambar
 window.addEventListener('paste', async (e) => {
   const dt = e.clipboardData || window.clipboardData;
   if (!dt) return;
 
-  // 1) Jika yang ditempel adalah GAMBAR (TradingView -> Salin gambar)
+  // 1️⃣ Jika yang ditempel adalah gambar (TradingView -> Salin gambar)
   const items = dt.items || [];
   for (const item of items) {
     if (item.type && item.type.startsWith('image/')) {
@@ -1331,30 +1290,28 @@ window.addEventListener('paste', async (e) => {
       if (file) {
         const b64 = await fileToBase64(file);
         if (b64) setImagePreview(lastImgKind, b64);
-        e.preventDefault();   // cegah tempel bitmap jadi teks
+        e.preventDefault();
         return;
       }
     }
   }
-';
-  // 2) Jika fokus di kolom URL kita, biarkan teks menempel lalu otomatis muat
+
+  // 2️⃣ Jika fokus di kolom URL (auto load setelah ditempel)
   const el = document.activeElement;
   const isUrlInput = el && (el.id === 'editImgBeforeUrl' || el.id === 'editImgAfterUrl');
   if (isUrlInput) {
-    // debounce ringan supaya tidak dobel request
-    clearTimeout(window.__urlPasteTimer__);
-    window.__urlPasteTimer__ = setTimeout(async () => {
+    setTimeout(async () => {
       const url = (el.value || '').trim();
       if (isLikelyImageURL(url)) {
         const kind = el.id === 'editImgBeforeUrl' ? 'before' : 'after';
         const b64 = await urlToBase64Smart(url);
         if (b64) setImagePreview(kind, b64);
       }
-    }, 60);
-    return; // jangan preventDefault; biar teks masuk ke input
+    }, 0);
+    return;
   }
 
-  // 3) Fallback: jika clipboard berisi TEKS URL gambar & bukan di kolom URL
+  // 3️⃣ Jika clipboard berisi teks URL gambar dan bukan di kolom URL
   const text = dt.getData?.('text')?.trim() || '';
   if (text && isLikelyImageURL(text)) {
     const b64 = await urlToBase64Smart(text);
@@ -1362,7 +1319,6 @@ window.addEventListener('paste', async (e) => {
     e.preventDefault();
   }
 });
-
 
 /* ===== Init ===== */
 (function init(){
@@ -1380,3 +1336,4 @@ window.addEventListener('paste', async (e) => {
   updateActiveProjectUI();
   calcSim();
 })();
+anda buat susunan judul2 dalam kode ini agar kedepan mudah untuk mencari fungsi yg di maksud
