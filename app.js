@@ -330,6 +330,19 @@ function addTrade(obj){
   data.push(obj);   // <— ubah dari unshift ke push
   save(data); 
 }
+function addTrade(obj){ 
+  const data = load(); 
+  data.push(obj);         // tambah di bawah
+  save(data); 
+  renderTrades();         // render ulang tabel
+  
+  // === scroll otomatis ke bawah ===
+  const tbl = document.querySelector('.table-scroll');
+  if (tbl) {
+    setTimeout(() => { tbl.scrollTop = tbl.scrollHeight; }, 100);
+  }
+}
+
 // === RENDER TABEL (urut lama → baru; entry baru di bawah) ===
 function renderTrades(){
   const tbody = document.getElementById('tradeList');
