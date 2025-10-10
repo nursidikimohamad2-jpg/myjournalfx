@@ -1089,7 +1089,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
   </div></body></html>`;
 }
-`;
+
 /* =====================================================
    Gambar: preview, drag & drop, lightbox + URL PASTE
    ===================================================== */
