@@ -1076,6 +1076,13 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
   </div></body></html>`;
 }
+setupDragDrop(dropBefore, editImgBefore, 'before');
+setupDragDrop(dropAfter,  editImgAfter,  'after');
+
+// tampilkan kolom URL di bawah masing-masing dropzone
+injectUrlBarUnder(dropBefore, 'before');
+injectUrlBarUnder(dropAfter,  'after');
+
 
 /* =====================================================
    Gambar: upload, drag & drop, lightbox + PASTE URL
