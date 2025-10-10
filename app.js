@@ -452,6 +452,57 @@ function openSaveProjectModal(){
   setTimeout(()=>saveProjectName.focus(),50);
 }
 function closeSaveProjectModal(){ saveProjectModal.classList.add('hidden'); saveProjectModal.classList.remove('flex'); }
+/* ====== PROJECTS — STORAGE & EVENTS (SAFE PATCH) ====== */
+(function(){
+  // --- storage helper: definisikan hanya jika belum ada
+  const PROJ_KEY = 'rr_journal_projects_v1';
+  if (typeof window.loadProj !== 'function') {
+    window.loadProj = function(){
+      try { return JSON.parse(localStorage.getItem(PROJ_KEY) || '[]'); }
+      catch { return []; }
+    };
+  }
+  if (typeof window.saveProj !== 'function') {
+    window.saveProj = function(items){
+      localStorage.setItem(PROJ_KEY, JSON.stringify(items));
+    };
+  }
+
+  // --- getter element
+  const $id = (x)=> document.getElementById(x);
+
+  const projectsModal    = $id('projectsModal');
+  const projectsList     = $id('projectsList');
+  const saveProjectModal = $id('saveProjectModal');
+  const saveProjectName  = $id('saveProjectName');
+  const saveProjectNotes = $id('saveProjectNotes');
+
+  // helper: bind sekali saja per elemen-event
+  function bindOnce(el, type, key, handler){
+    if (!el) return;
+    const flag = `bound_${key}`;
+    if (el.dataset && el.dataset[flag]) return;
+    el.addEventListener(type, handler);
+    if (el.dataset) el.dataset[flag] = '1';
+  }
+
+  // === Toolbar: Projects
+  bindOnce($id('openProjectsBtn'), 'click', 'openProjects', () => {
+    if (typeof renderProjects === 'function') renderProjects();
+    projectsModal?.classList.remove('hidden');
+    projectsModal?.classList.add('flex');
+  });
+
+  // === Toolbar: Simpan Project (buka modal)
+  bindOnce($id('saveProjectBtn'), 'click', 'openSaveProject', () => {
+    if (typeof openSaveProjectModal === 'function') {
+      openSaveProjectModal();
+    } else {
+      if (saveProjectName)  saveProjectName.value  = '';
+      if (saveProjectNotes) saveProjectNotes.value = '';
+      saveProjectModal?.classList.remove('hidden');
+      saveProjectModal?.classList.add('flex');
+      setTimeout(()=> saveProjectName?.focus(), 50
 
 /* ===== events: ADD FORM ===== */
 form?.addEventListener('input', ()=>{
@@ -501,22 +552,6 @@ form?.addEventListener('submit', e=>{
   rPointEl.textContent = tp1El.textContent = tp2El.textContent = tp3El.textContent = '0.00';
   refresh();
 });
-
-/* ====== PROJECTS — STORAGE & EVENTS (SAFE PATCH) ====== */
-(function(){
-  // --- storage helper: definisikan hanya jika belum ada
-  const PROJ_KEY = 'rr_journal_projects_v1';
-  if (typeof window.loadProj !== 'function') {
-    window.loadProj = function(){
-      try { return JSON.parse(localStorage.getItem(PROJ_KEY) || '[]'); }
-      catch { return []; }
-    };
-  }
-  if (typeof window.saveProj !== 'function') {
-    window.saveProj = function(items){
-      localStorage.setItem(PROJ_KEY, JSON.stringify(items));
-    };
-  }
 
   // --- getter element
   const $id = (x)=> document.getElementById(x);
