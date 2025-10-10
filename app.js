@@ -1317,7 +1317,7 @@ function injectUrlBarUnder(areaEl, kind){
   }
 }
 
-
+';
 // Paste global: dukung gambar langsung & link gambar (auto-load)
 window.addEventListener('paste', async (e) => {
   const dt = e.clipboardData || window.clipboardData;
@@ -1336,7 +1336,7 @@ window.addEventListener('paste', async (e) => {
       }
     }
   }
-
+';
   // 2) Jika fokus di kolom URL kita, biarkan teks menempel lalu otomatis muat
   const el = document.activeElement;
   const isUrlInput = el && (el.id === 'editImgBeforeUrl' || el.id === 'editImgAfterUrl');
