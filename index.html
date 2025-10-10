@@ -346,64 +346,59 @@
 
   <script src="app.js"></script>
 
+<script>
+(function () {
+  const MAX_MB = 3; // samakan dgn teks di UI Anda (2–3MB)
 
-  <script>
-document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.img-dropzone').forEach(zone => {
+    // biar bisa focus dan menerima paste setelah diklik
+    if (!zone.hasAttribute('tabindex')) zone.setAttribute('tabindex', '0');
+    zone.addEventListener('click', () => zone.focus());
 
-  // daftar area target (Before & After)
-  const zones = [
-    { dropId: 'dropBefore',  inputHidden: 'editImgBeforeData', previewId: 'editImgBeforePreview' },
-    { dropId: 'dropAfter',   inputHidden: 'editImgAfterData',  previewId: 'editImgAfterPreview' }
-  ];
+    zone.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items ? e.clipboardData.items : [];
+      for (const it of items) {
+        if (it.kind !== 'file') continue;
+        const file = it.getAsFile();
+        if (!file) continue;
+        if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
+        const sizeMB = file.size / (1024 * 1024);
+        if (sizeMB > MAX_MB) {
+          alert(`Ukuran gambar terlalu besar (${sizeMB.toFixed(2)} MB). Maksimal ${MAX_MB} MB`);
+          return;
+        }
 
-  // deteksi apakah teks mungkin URL gambar
-  const isImageURL = (txt) => /^https?:\/\/.+\.(png|jpe?g|webp|gif)$/i.test(txt.trim());
+        e.preventDefault(); // kita handle sendiri
 
-  // ubah URL → base64
-  async function urlToBase64(url){
-    try {
-      const res = await fetch(url);
-      const blob = await res.blob();
-      return await new Promise((resolve,reject)=>{
-        const r = new FileReader();
-        r.onload = ()=>resolve(r.result);
-        r.onerror = reject;
-        r.readAsDataURL(blob);
-      });
-    } catch(err){
-      console.error('Gagal ambil gambar:', err);
-      return '';
-    }
-  }
+        // >>> inti solusi: inject ke input[type=file] yg sudah ada <<<
+        const input = zone.querySelector('input[type="file"]');
+        if (input) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
 
-  // apply URL/base64 ke preview + hidden input
-  function setPreview(previewEl, hiddenEl, data){
-    if(!data) return;
-    previewEl.src = data;
-    previewEl.classList.remove('hidden');
-    hiddenEl.value = data;
-  }
+          // picu semua logika lama (preview, simpan, dll) yang listen 'change'
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
 
-  zones.forEach(({dropId, inputHidden, previewId})=>{
-    const zone = document.getElementById(dropId);
-    const hiddenEl = document.getElementById(inputHidden);
-    const previewEl = document.getElementById(previewId);
-    if(!zone || !hiddenEl || !previewEl) return;
+        // opsional: preview cepat (kalau UI Anda belum auto-preview di 'change')
+        const url = URL.createObjectURL(file);
+        let img = zone.querySelector('img.preview');
+        if (!img) {
+          img = document.createElement('img');
+          img.className = 'preview';
+          img.style.cssText = 'display:block;width:100%;height:auto;border-radius:10px;margin-top:8px';
+          zone.appendChild(img);
+        }
+        img.src = url;
 
-    // agar bisa dipaste setelah diklik
-    zone.tabIndex = 0;
-    zone.addEventListener('click', ()=>zone.focus());
-
-    zone.addEventListener('paste', async (e)=>{
-      const clip = e.clipboardData?.getData('text') || '';
-      if(isImageURL(clip)){
-        e.preventDefault();
-        const b64 = await urlToBase64(clip.trim());
-        if(b64) setPreview(previewEl, hiddenEl, b64);
+        break; // ambil 1 gambar pertama saja
       }
     });
   });
-});
+})();
 </script>
+
 </body>
 </html>
+ini file html
