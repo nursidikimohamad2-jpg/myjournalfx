@@ -1335,4 +1335,4 @@ window.addEventListener('paste', async (e)=>{
   updateActiveProjectUI();
   calcSim();
 })();
-ini adalah kode url di mulai coba and asesuaikan jika ini yg anda maksud
+
