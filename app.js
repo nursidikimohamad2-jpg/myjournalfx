@@ -325,12 +325,9 @@ function refresh(){
 }
 
 /* ===== CRUD data ===== */
-function addTrade(obj){ 
-  const data = load(); 
-  data.push(obj);   
-  save(data); 
 
-  // 🔄 panggil fungsi yang menggambar ulang tabel (sesuaikan dengan milikmu)
+// Helper: panggil fungsi render yang tersedia di proyekmu
+function redraw(){
   if (typeof refresh === 'function') {
     refresh();
   } else if (typeof renderTrades === 'function') {
@@ -338,20 +335,62 @@ function addTrade(obj){
   } else if (typeof renderTable === 'function') {
     renderTable();
   }
+}
 
-  // 📜 scroll otomatis ke bawah tabel setelah render
+function addTrade(obj){ 
+  const data = load(); 
+  data.push(obj);        // tambah di akhir → baris baru di bawah
+  save(data); 
+
+  // render ulang
+  redraw();
+
+  // scroll otomatis ke bawah setelah render
   const tbl = document.querySelector('.table-scroll');
   if (tbl) {
     setTimeout(() => {
+      // gunakan smooth biar enak dilihat
       tbl.scrollTo({ top: tbl.scrollHeight, behavior: 'smooth' });
     }, 100);
   }
 }
 
+function updateTrade(id, patch){
+  const data = load();
+  const i = data.findIndex(x => x.id === id);
+  if (i < 0) return;
 
+  // simpan posisi scroll sekarang agar tidak “loncat”
+  const tbl = document.querySelector('.table-scroll');
+  const prevTop = tbl ? tbl.scrollTop : 0;
 
-function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
-function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
+  data[i] = { ...data[i], ...patch };
+  save(data);
+
+  // render ulang
+  redraw();
+
+  // kembalikan ke posisi sebelumnya
+  if (tbl) {
+    setTimeout(() => { tbl.scrollTop = prevTop; }, 60);
+  }
+}
+
+function deleteTrade(id){
+  const tbl = document.querySelector('.table-scroll');
+  const prevTop = tbl ? tbl.scrollTop : 0;
+
+  const data = load().filter(x => x.id !== id);
+  save(data);
+
+  // render ulang
+  redraw();
+
+  // jaga posisi scroll (agar tidak lari ke atas)
+  if (tbl) {
+    setTimeout(() => { tbl.scrollTop = prevTop; }, 60);
+  }
+}
 
 /* ===== edit modal ===== */
 function openEdit(id){
