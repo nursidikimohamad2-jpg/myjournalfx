@@ -398,6 +398,65 @@
   });
 })();
 </script>
+  <script>
+document.addEventListener('DOMContentLoaded', () => {
+
+  // daftar area target (Before & After)
+  const zones = [
+    { dropId: 'dropBefore',  inputHidden: 'editImgBeforeData', previewId: 'editImgBeforePreview' },
+    { dropId: 'dropAfter',   inputHidden: 'editImgAfterData',  previewId: 'editImgAfterPreview' }
+  ];
+
+  // deteksi apakah teks mungkin URL gambar
+  const isImageURL = (txt) => /^https?:\/\/.+\.(png|jpe?g|webp|gif)$/i.test(txt.trim());
+
+  // ubah URL → base64
+  async function urlToBase64(url){
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return await new Promise((resolve,reject)=>{
+        const r = new FileReader();
+        r.onload = ()=>resolve(r.result);
+        r.onerror = reject;
+        r.readAsDataURL(blob);
+      });
+    } catch(err){
+      console.error('Gagal ambil gambar:', err);
+      return '';
+    }
+  }
+
+  // apply URL/base64 ke preview + hidden input
+  function setPreview(previewEl, hiddenEl, data){
+    if(!data) return;
+    previewEl.src = data;
+    previewEl.classList.remove('hidden');
+    hiddenEl.value = data;
+  }
+
+  zones.forEach(({dropId, inputHidden, previewId})=>{
+    const zone = document.getElementById(dropId);
+    const hiddenEl = document.getElementById(inputHidden);
+    const previewEl = document.getElementById(previewId);
+    if(!zone || !hiddenEl || !previewEl) return;
+
+    // agar bisa dipaste setelah diklik
+    zone.tabIndex = 0;
+    zone.addEventListener('click', ()=>zone.focus());
+
+    zone.addEventListener('paste', async (e)=>{
+      const clip = e.clipboardData?.getData('text') || '';
+      if(isImageURL(clip)){
+        e.preventDefault();
+        const b64 = await urlToBase64(clip.trim());
+        if(b64) setPreview(previewEl, hiddenEl, b64);
+      }
+    });
+  });
+});
+</script>
+
 
 </body>
 </html>
