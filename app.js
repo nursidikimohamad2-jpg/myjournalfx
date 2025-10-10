@@ -1309,29 +1309,55 @@ function injectUrlBarUnder(areaEl, kind){
 // inject URL bar bila ada drop zone
 injectUrlBarUnder(dropBefore, 'before');
 injectUrlBarUnder(dropAfter,  'after');
+(function () {
+  const MAX_MB = 3; // samakan dgn teks di UI Anda (2–3MB)
 
-// Global paste: jika ada URL gambar di clipboard, muat ke area terakhir yang aktif
-window.addEventListener('paste', async (e)=>{
-  const t = (e.clipboardData || window.clipboardData)?.getData?.('text') || '';
-  if (isLikelyImageURL(t)){
-    const b64 = await urlToBase64Smart(t.trim());
-    if (b64) setImagePreview(lastImgKind, b64);
-  }
-});
+  document.querySelectorAll('.img-dropzone').forEach(zone => {
+    // biar bisa focus dan menerima paste setelah diklik
+    if (!zone.hasAttribute('tabindex')) zone.setAttribute('tabindex', '0');
+    zone.addEventListener('click', () => zone.focus());
 
-/* ===== Init ===== */
-(function init(){
-  ensureSymbolDropdownForAdd();
-  ensureSymbolDropdownForEdit();
+    zone.addEventListener('paste', (e) => {
+      const items = e.clipboardData && e.clipboardData.items ? e.clipboardData.items : [];
+      for (const it of items) {
+        if (it.kind !== 'file') continue;
+        const file = it.getAsFile();
+        if (!file) continue;
+        if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
+        const sizeMB = file.size / (1024 * 1024);
+        if (sizeMB > MAX_MB) { /* opsional: tampilkan toast Anda di sini */ return; }
 
-  const s = loadSettings();
-  if(baseInput) baseInput.value = (s.base ?? '');
-  if(riskInput) riskInput.value = (s.risk ?? '');
-  baseInput?.addEventListener('input', ()=> calcSim());
-  riskInput?.addEventListener('input', ()=> calcSim());
+        e.preventDefault(); // kita handle sendiri
 
-  applyPriceFormatToAddForm();
-  refresh();
-  updateActiveProjectUI();
-  calcSim();
+        // >>> inti solusi: inject ke input[type=file] yg sudah ada <<<
+        const input = zone.querySelector('input[type="file"]');
+        if (input) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          input.files = dt.files;
+
+          // picu semua logika lama (preview, simpan, dll) yang listen 'change'
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        // opsional: preview cepat (kalau UI Anda belum auto-preview di 'change')
+        const url = URL.createObjectURL(file);
+        let img = zone.querySelector('img.preview');
+        if (!img) {
+          img = document.createElement('img');
+          img.className = 'preview';
+          img.style.cssText = 'display:block;width:100%;height:auto;border-radius:10px;margin-top:8px';
+          zone.appendChild(img);
+        }
+        img.src = url;
+
+        break; // ambil 1 gambar pertama saja
+      }
+    });
+  });
 })();
+</script>
+
+</body>
+</html>
+coba anda cek
