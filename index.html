@@ -346,58 +346,7 @@
 
   <script src="app.js"></script>
 
-<script>
-(function () {
-  const MAX_MB = 3; // samakan dgn teks di UI Anda (2–3MB)
 
-  document.querySelectorAll('.img-dropzone').forEach(zone => {
-    // biar bisa focus dan menerima paste setelah diklik
-    if (!zone.hasAttribute('tabindex')) zone.setAttribute('tabindex', '0');
-    zone.addEventListener('click', () => zone.focus());
-
-    zone.addEventListener('paste', (e) => {
-      const items = e.clipboardData && e.clipboardData.items ? e.clipboardData.items : [];
-      for (const it of items) {
-        if (it.kind !== 'file') continue;
-        const file = it.getAsFile();
-        if (!file) continue;
-        if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
-        const sizeMB = file.size / (1024 * 1024);
-        if (sizeMB > MAX_MB) {
-          alert(`Ukuran gambar terlalu besar (${sizeMB.toFixed(2)} MB). Maksimal ${MAX_MB} MB`);
-          return;
-        }
-
-        e.preventDefault(); // kita handle sendiri
-
-        // >>> inti solusi: inject ke input[type=file] yg sudah ada <<<
-        const input = zone.querySelector('input[type="file"]');
-        if (input) {
-          const dt = new DataTransfer();
-          dt.items.add(file);
-          input.files = dt.files;
-
-          // picu semua logika lama (preview, simpan, dll) yang listen 'change'
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-
-        // opsional: preview cepat (kalau UI Anda belum auto-preview di 'change')
-        const url = URL.createObjectURL(file);
-        let img = zone.querySelector('img.preview');
-        if (!img) {
-          img = document.createElement('img');
-          img.className = 'preview';
-          img.style.cssText = 'display:block;width:100%;height:auto;border-radius:10px;margin-top:8px';
-          zone.appendChild(img);
-        }
-        img.src = url;
-
-        break; // ambil 1 gambar pertama saja
-      }
-    });
-  });
-})();
-</script>
   <script>
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -456,7 +405,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 });
 </script>
-
-
 </body>
 </html>
