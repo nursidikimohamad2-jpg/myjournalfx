@@ -325,12 +325,13 @@ function refresh(){
 }
 
 /* ===== CRUD data ===== */
-function addTrade(obj){ const data = load(); data.unshift(obj); save(data); }
 function addTrade(obj){
   const data = load();
   data.push(obj);     // ← sudah benar
   save(data);
 }
+
+
 // === RENDER TABEL (urut lama → baru; entry baru di bawah) ===
 function renderTrades(){
   const tbody = document.getElementById('tradeList');
