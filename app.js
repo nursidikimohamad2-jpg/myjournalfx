@@ -1322,7 +1322,7 @@ function injectUrlBarUnder(areaEl, kind){
 }
 
 
-// Paste global: dukung gambar langsung & link gambar (auto-load)
+/// Paste global: dukung gambar langsung & link gambar (auto-load)
 window.addEventListener('paste', async (e) => {
   const dt = e.clipboardData || window.clipboardData;
   if (!dt) return;
