@@ -443,55 +443,172 @@
   })();
   </script>
 
-  <!-- === Tambahan: Zoom pakai scroll untuk Lightbox halaman utama === -->
-  <script>
-  (function(){
-    var viewer   = document.getElementById('imgViewer');
-    var inner    = document.getElementById('imgViewerInner');
-    var img      = document.getElementById('imgViewerImg');
-    var btnClose = document.getElementById('imgViewerClose');
+ <script>
+(function(){
+  var viewer   = document.getElementById('imgViewer');
+  var inner    = document.getElementById('imgViewer');       // backdrop, kita pakai buat tutup klik di luar
+  var box      = document.querySelector('#imgViewer .items-center'); // container flex (fallback kalau ada)
+  var img      = document.getElementById('imgViewerImg');
+  var btnClose = document.getElementById('imgViewerClose');
 
-    // state zoom sederhana
-    var scale = 1;
-    var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
+  // ====== ZOOM (fit-first) ======
+  var baseScale = 1;           // skala agar gambar fit ke frame
+  var scale = 1;               // faktor zoom user (1..MAX)
+  var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
 
-    function applyZoom(){
-      img.style.transform = 'scale(' + scale + ')';
-      img.style.cursor = (scale > 1 ? 'zoom-out' : 'zoom-in');
+  // ====== PAN (geser) ======
+  var tx = 0, ty = 0;          // posisi terjemahan
+  var startX = 0, startY = 0;  // titik awal pointer
+  var startTx = 0, startTy = 0;
+  var dragging = false;
+
+  img.style.willChange = 'transform';
+  img.style.transformOrigin = 'center center';
+
+  function applyTransform(){
+    img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (baseScale * scale) + ')';
+    img.style.cursor = dragging ? 'grabbing' : (scale > 1 ? 'grab' : 'zoom-in');
+  }
+  function resetZoomPan(){
+    scale = 1; tx = 0; ty = 0; applyTransform();
+  }
+
+  // hitung baseScale supaya gambar fit ke viewport modal
+  function computeBaseScale(){
+    // ukuran area tampil: pakai viewport dengan margin kecil
+    var cw = Math.min(window.innerWidth  * 0.90, 0.90 * window.innerWidth);
+    var ch = Math.min(window.innerHeight * 0.85, 0.85 * window.innerHeight);
+    // natural size
+    var nw = img.naturalWidth  || img.width;
+    var nh = img.naturalHeight || img.height;
+    if(!nw || !nh){ baseScale = 1; return; }
+    baseScale = Math.min(cw/nw, ch/nh);
+    // kunci width ke natural, transform yg ngatur
+    img.style.width  = nw + 'px';
+    img.style.height = 'auto';
+  }
+
+  // batasi gerakan pan agar gambar tidak “lepas” terlalu jauh
+  function clampPan(){
+    var cw = Math.min(window.innerWidth  * 0.90, 0.90 * window.innerWidth);
+    var ch = Math.min(window.innerHeight * 0.85, 0.85 * window.innerHeight);
+
+    var nw = img.naturalWidth  || img.width;
+    var nh = img.naturalHeight || img.height;
+    var sw = nw * baseScale * scale;   // size tampil
+    var sh = nh * baseScale * scale;
+
+    var maxX = Math.max(0, (sw - cw) / 2);
+    var maxY = Math.max(0, (sh - ch) / 2);
+
+    if (tx >  maxX) tx =  maxX;
+    if (tx < -maxX) tx = -maxX;
+    if (ty >  maxY) ty =  maxY;
+    if (ty < -maxY) ty = -maxY;
+  }
+
+  function openViewer(){
+    // saat modal dibuka, gambar sudah punya src dari app.js
+    // tunggu gambar siap untuk hitung baseScale
+    if (img.complete) {
+      computeBaseScale(); resetZoomPan();
+    } else {
+      img.onload = function(){ computeBaseScale(); resetZoomPan(); };
     }
-    function resetZoom(){
-      scale = 1;
-      applyZoom();
+  }
+
+  // ====== WHEEL ZOOM ======
+  function onWheel(e){
+    if (viewer.classList.contains('hidden')) return;
+    e.preventDefault();
+    var dir  = (e.deltaY < 0) ? 1 : -1; // up=in
+    var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir*STEP));
+    if (next !== scale){
+      scale = next;
+      clampPan();
+      applyTransform();
     }
+  }
+  // pasang ke gambar & ke container modal
+  img.addEventListener('wheel',   onWheel, {passive:false});
+  viewer.addEventListener('wheel', onWheel, {passive:false});
 
-    // zoom via scroll (wheel) di area gambar
-    inner.addEventListener('wheel', function(e){
-      if (viewer.classList.contains('hidden')) return; // lightbox tertutup
-      e.preventDefault(); // cegah scroll body
-      var dir  = e.deltaY < 0 ? 1 : -1;               // up = zoom in
-      var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir * STEP));
-      if (next !== scale){ scale = next; applyZoom(); }
-    }, { passive:false });
+  // ====== DRAG PAN ======
+  function canPan(){ return scale > 1; }
 
-    // double-click untuk reset zoom
-    inner.addEventListener('dblclick', function(){
-      resetZoom();
-    });
+  function onDown(clientX, clientY){
+    if (!canPan()) return;
+    dragging = true;
+    startX = clientX; startY = clientY;
+    startTx = tx; startTy = ty;
+    document.body.style.userSelect = 'none';
+    applyTransform();
+  }
+  function onMove(clientX, clientY){
+    if (!dragging) return;
+    tx = startTx + (clientX - startX);
+    ty = startTy + (clientY - startY);
+    clampPan();
+    applyTransform();
+  }
+  function onUp(){
+    if (!dragging) return;
+    dragging = false;
+    document.body.style.userSelect = '';
+    applyTransform();
+  }
 
-    // saat tombol Tutup diklik, reset zoom agar bersih
-    btnClose.addEventListener('click', function(){
-      resetZoom();
-    });
+  // mouse
+  img.addEventListener('mousedown', function(e){ onDown(e.clientX, e.clientY); });
+  document.addEventListener('mousemove', function(e){ onMove(e.clientX, e.clientY); });
+  document.addEventListener('mouseup', onUp);
 
-    // opsional: tekan ESC juga reset (selain menutup via app.js)
-    document.addEventListener('keydown', function(e){
-      if (e.key === 'Escape') resetZoom();
-    });
+  // touch
+  img.addEventListener('touchstart', function(e){
+    if (e.touches.length !== 1) return;
+    var t = e.touches[0];
+    onDown(t.clientX, t.clientY);
+  }, {passive:true});
+  img.addEventListener('touchmove', function(e){
+    if (!dragging || e.touches.length !== 1) return;
+    var t = e.touches[0];
+    onMove(t.clientX, t.clientY);
+  }, {passive:true});
+  img.addEventListener('touchend', onUp);
+  img.addEventListener('touchcancel', onUp);
 
-    // awal
-    resetZoom();
-  })();
-  </script>
+  // double click reset
+  img.addEventListener('dblclick', resetZoomPan);
+
+  // ESC reset (app.js tetap menutup modalnya)
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') resetZoomPan(); });
+
+  // tombol tutup
+  btnClose.addEventListener('click', resetZoomPan);
+
+  // klik backdrop untuk tutup juga tetap di app.js; kita hanya reset
+  viewer.addEventListener('click', function(e){
+    if (e.target === viewer) resetZoomPan();
+  });
+
+  // recompute saat resize
+  window.addEventListener('resize', function(){
+    if (viewer.classList.contains('hidden')) return;
+    computeBaseScale(); clampPan(); applyTransform();
+  });
+
+  // panggil saat modal dibuka (opsional: panggil dari app.js setelah buka)
+  // kalau mau otomatis: observe perubahan class "hidden"
+  const obs = new MutationObserver(()=> {
+    if (!viewer.classList.contains('hidden')) openViewer();
+  });
+  obs.observe(viewer, { attributes:true, attributeFilter:['class'] });
+
+  // init
+  resetZoomPan();
+})();
+</script>
+
 
 </body>
 </html>
