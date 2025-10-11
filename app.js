@@ -325,7 +325,12 @@ function refresh(){
 }
 
 /* ===== CRUD data ===== */
-function addTrade(obj){ const data = load(); data.unshift(obj); save(data); }
+function addTrade(obj){ 
+  const data = load(); 
+  data.push(obj);   // <— ubah dari unshift ke push
+  save(data); 
+}
+
 function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
 function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
 
