@@ -1322,14 +1322,51 @@ function injectUrlBarUnder(areaEl, kind){
 }
 
 
-// Global paste: jika ada URL gambar di clipboard, muat ke area terakhir yang aktif
-window.addEventListener('paste', async (e)=>{
-  const t = (e.clipboardData || window.clipboardData)?.getData?.('text') || '';
-  if (isLikelyImageURL(t)){
-    const b64 = await urlToBase64Smart(t.trim());
+// Paste global: dukung gambar langsung & link gambar (auto-load)
+window.addEventListener('paste', async (e) => {
+  const dt = e.clipboardData || window.clipboardData;
+  if (!dt) return;
+
+  // 1) Jika yang ditempel adalah GAMBAR (TradingView -> Salin gambar)
+  const items = dt.items || [];
+  for (const item of items) {
+    if (item.type && item.type.startsWith('image/')) {
+      const file = item.getAsFile?.();
+      if (file) {
+        const b64 = await fileToBase64(file);
+        if (b64) setImagePreview(lastImgKind, b64);
+        e.preventDefault();   // cegah tempel bitmap jadi teks
+        return;
+      }
+    }
+  }
+
+  // 2) Jika fokus di kolom URL kita, biarkan teks menempel lalu otomatis muat
+  const el = document.activeElement;
+  const isUrlInput = el && (el.id === 'editImgBeforeUrl' || el.id === 'editImgAfterUrl');
+  if (isUrlInput) {
+    // debounce ringan supaya tidak dobel request
+    clearTimeout(window.__urlPasteTimer__);
+    window.__urlPasteTimer__ = setTimeout(async () => {
+      const url = (el.value || '').trim();
+      if (isLikelyImageURL(url)) {
+        const kind = el.id === 'editImgBeforeUrl' ? 'before' : 'after';
+        const b64 = await urlToBase64Smart(url);
+        if (b64) setImagePreview(kind, b64);
+      }
+    }, 60);
+    return; // jangan preventDefault; biar teks masuk ke input
+  }
+
+  // 3) Fallback: jika clipboard berisi TEKS URL gambar & bukan di kolom URL
+  const text = dt.getData?.('text')?.trim() || '';
+  if (text && isLikelyImageURL(text)) {
+    const b64 = await urlToBase64Smart(text);
     if (b64) setImagePreview(lastImgKind, b64);
+    e.preventDefault();
   }
 });
+
 
 /* ===== Init ===== */
 (function init(){
