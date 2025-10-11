@@ -1273,15 +1273,13 @@ function injectUrlBarUnder(areaEl, kind){
 function injectUrlBarUnder(areaEl, kind){
   if(!areaEl) return;
   const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
-  if (document.getElementById(id)) return; // sudah ada
+  if (document.getElementById(id)) return;
 
-  // ambil kelas dari input angka agar tampilannya identik
+  // ambil class dari input angka agar identik tampilannya (terang)
   const mimicClass =
-    (form?.entry_price?.className || editForm?.entry_price?.className) ||
-    'w-full rounded-xl border border-slate-300 bg-slate-50 text-slate-900 ' +
-    'px-3 py-2 text-sm placeholder-slate-500 focus:outline-none ' +
-    'focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-    'dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100';
+    (editForm?.entry_price?.className || form?.entry_price?.className) ||
+    'w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm ' +
+    'placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
 
   const wrap = document.createElement('div');
   wrap.className = 'mt-2 flex items-center gap-2';
@@ -1300,26 +1298,22 @@ function injectUrlBarUnder(areaEl, kind){
   const input = wrap.querySelector('input');
   const btn   = wrap.querySelector('button');
 
+  // biar tinggi pas (kalau input acuan punya tinggi tertentu)
+  const ref = editForm?.entry_price || form?.entry_price;
+  if (ref) input.style.height = getComputedStyle(ref).height;
+
+  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
+
   const loader = async () => {
     const url = (input.value||'').trim();
     if (!isLikelyImageURL(url)) { alert('Masukkan URL file gambar (.png/.jpg/.webp) atau data:image/…'); input.focus(); return; }
     const b64 = await urlToBase64Smart(url);
     if (b64) setImagePreview(kind, b64);
   };
-
   input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
   btn.addEventListener('click', loader);
-
-  // agar paste/link diarahkan ke area ini
-  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-
-  // samakan tinggi input jika ada referensi
-  const ref = form?.entry_price || editForm?.entry_price;
-  if (ref) {
-    const h = getComputedStyle(ref).height;
-    if (h && h !== 'auto') input.style.height = h;
-  }
 }
+
 
 
 // Paste global: dukung gambar langsung & link gambar (auto-load)
