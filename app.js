@@ -1130,7 +1130,6 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   .time{font-size:12px;color:var(--muted)}
   .flex{display:flex;gap:16px}
   .grow{flex:1}
-  .sep{height:1px;background:var(--ring);margin:10px 0}
 
   /* header sticky */
   .report-header{
@@ -1154,11 +1153,10 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   #fabScroll:active{ transform:translateY(1px) }
   #fabScroll svg{ width:18px; height:18px }
 
-  /* Lightbox export + zoom */
+  /* Lightbox export + zoom & pan */
   #lb{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:100}
   #lb.open{display:flex}
   #lb .close{position:absolute; top:14px; right:14px; background:#111827; color:#fff; border:1px solid var(--ring); padding:6px 10px; border-radius:10px; cursor:pointer}
-
   #lbInner{
     position:relative; overflow:hidden;
     max-width:92vw; max-height:90vh;
@@ -1170,6 +1168,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     display:block; max-width:none; max-height:none;
     user-select:none; -webkit-user-drag:none;
     transform-origin:center center; cursor:zoom-in;
+    will-change: transform;
   }
 
   @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
@@ -1178,76 +1177,80 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
   const fmt  = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
   const fmt0 = n => (+n).toLocaleString('id-ID',{maximumFractionDigits:0});
-  const signClass = n => n>=0 ? 'pos' : 'neg';
+  const signClass = n => (n>=0 ? 'pos' : 'neg');
 
-  const win  = stats.results?.wins ?? 0;
-  const loss = stats.results?.counts?.SL ?? 0;
+  const win  = stats?.results?.wins ?? 0;
+  const loss = stats?.results?.counts?.SL ?? 0;
 
+  // ===== HEADER (sticky) + pembuka konten =====
   const header = `
     <div class="report-header">
       <div>
         <h1>${projectName}</h1>
-        <div class="muted">Rentang: ${stats.range?.min||'-'} — ${stats.range?.max||'-'} • Disusun otomatis dari RR Journal</div>
+        <div class="muted">Rentang: ${stats?.range?.min||'-'} — ${stats?.range?.max||'-'} • Disusun otomatis dari RR Journal</div>
       </div>
       <div class="cards">
-        <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
+        <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats?.total||0)}</div></div>
         <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
-        <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
-        <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
-        <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+        <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats?.rsumTotal||0)}">${stats?.rsumTotal??0}</div></div>
+        <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats?.sim?.oneR||0)}</div></div>
+        <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats?.sim?.pnl||0)}">${(stats?.sim?.pnl||0)>=0?'+':''}$${fmt(stats?.sim?.pnl||0)}</div></div>
       </div>
     </div>
     <div class="report-main">
   `;
 
-  // running P/L & equity
-  const oneR = stats.sim.oneR;
-  let runR = 0, runPnlUSD = 0, runEq = stats.sim.base;
+  // ===== Running equity/PnL (simulasi) =====
+  const oneR = stats?.sim?.oneR || 0;
+  let runR = 0, runPnlUSD = 0, runEq = stats?.sim?.base || 0;
 
+  // ===== Kartu per-trade =====
   const tradeCards = (trades||[]).map(t=>{
-    const sym  = normalizeSymbol(t.symbol);
-    const prec = precisionForSymbol(sym);
+    const sym  = normalizeSymbol?.(t.symbol) ?? (t.symbol||'—');
+    const prec = precisionForSymbol?.(sym) ?? 2;
     const entry = +t.entry_price || 0;
     const sl    = +t.stop_loss   || 0;
     const d     = Math.abs(entry - sl);
     const tp1   = t.side==='LONG'? entry+d   : entry-d;
     const tp2   = t.side==='LONG'? entry+2*d : entry-2*d;
     const tp3   = t.side==='LONG'? entry+3*d : entry-3*d;
+    const [r1,r2,r3] = (typeof rByResult==='function') ? rByResult(t.result||'') : [0,0,0];
+    const rnet = (typeof netROf==='function') ? netROf(t.result||'') : 0;
 
-    const [r1,r2,r3] = rByResult(t.result||'');
-    const rnet = netROf(t.result||'');
-
-    runR += rnet; runPnlUSD = runR * oneR; runEq = stats.sim.base + runPnlUSD;
+    runR += rnet; runPnlUSD = runR * oneR; runEq = (stats?.sim?.base||0) + runPnlUSD;
 
     const imgBefore = t.img_before_data || '';
     const imgAfter  = t.img_after_data  || '';
-
-    const price = v => toFixedBy(v, prec);
+    const price = v => (typeof toFixedBy==='function') ? toFixedBy(v, prec) : (v?.toFixed?.(prec) ?? String(v));
 
     return `
       <div class="block">
         <div class="head">
           <div class="sym">${sym}</div>
-          <span class="badge ${t.side}">${t.side}</span>
+          ${t.side ? `<span class="badge ${t.side}">${t.side}</span>` : ''}
           ${t.result ? `<span class="badge ${t.result}">${t.result}</span>` : ''}
-          <div class="time">• ${fmtDT(t.setup_date||'')}</div>
+          <div class="time">• ${typeof fmtDT==='function' ? fmtDT(t.setup_date||'') : (t.setup_date||'')}</div>
         </div>
 
         <div class="row">
           <div>
-            <div class="thumb">${
-              imgBefore
-                ? `<img loading="lazy" class="zoomable" src="${imgBefore}" alt="Sebelum">`
-                : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
-            }</div>
+            <div class="thumb">
+              ${
+                imgBefore
+                  ? `<img class="zoomable" loading="lazy" src="${imgBefore}" alt="Sebelum">`
+                  : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
+              }
+            </div>
             <div class="cap">Sebelum — (placeholder/chart atau gambar sebelum)</div>
           </div>
           <div>
-            <div class="thumb">${
-              imgAfter
-                ? `<img loading="lazy" class="zoomable" src="${imgAfter}" alt="Sesudah">`
-                : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
-            }</div>
+            <div class="thumb">
+              ${
+                imgAfter
+                  ? `<img class="zoomable" loading="lazy" src="${imgAfter}" alt="Sesudah">`
+                  : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
+              }
+            </div>
             <div class="cap">Sesudah — (placeholder/chart atau gambar sesudah)</div>
           </div>
         </div>
@@ -1286,6 +1289,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     `;
   }).join('');
 
+  // ===== FAB naik/turun =====
   const fab = `
     <button id="fabScroll" aria-label="Scroll" title="Scroll">
       <svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1302,16 +1306,17 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
             : '<path d="M12 19V5M5 12l7-7 7 7"/>';
           btn.title = (dir==='down') ? 'Ke bagian bawah' : 'Kembali ke atas';
         }
+        function needScroll(){ return document.body.scrollHeight > window.innerHeight + 8; }
+        function nearTop(){ return window.scrollY < 100; }
         function update(){
-          var need = document.body.scrollHeight > innerHeight + 8;
-          if(!need){ btn.style.display='none'; return; }
+          if(!needScroll()){ btn.style.display='none'; return; }
           btn.style.display='flex';
-          if(scrollY < 100){
+          if(nearTop()){
             setIcon('down');
-            btn.onclick = function(){ scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); };
+            btn.onclick = function(){ window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); };
           }else{
             setIcon('up');
-            btn.onclick = function(){ scrollTo({top:0, behavior:'smooth'}); };
+            btn.onclick = function(){ window.scrollTo({top:0, behavior:'smooth'}); };
           }
         }
         addEventListener('scroll',update,{passive:true});
@@ -1322,6 +1327,82 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     </script>
   `;
 
+  // ===== Lightbox (zoom + pan) =====
+  const lightbox = `
+    <div id="lb" aria-modal="true" role="dialog">
+      <button class="close" aria-label="Tutup">Tutup</button>
+      <div id="lbInner">
+        <img id="lbImg" alt="">
+      </div>
+    </div>
+    <script>
+      (function(){
+        var lb = document.getElementById('lb');
+        var img = document.getElementById('lbImg');
+        var inner = document.getElementById('lbInner');
+        var btnClose = lb.querySelector('.close');
+
+        var baseScale = 1, scale = 1, MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
+        var tx = 0, ty = 0, startX=0, startY=0, startTx=0, startTy=0, dragging=false;
+
+        function apply(){ img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (baseScale * scale) + ')';
+          img.style.cursor = dragging ? 'grabbing' : (scale > 1 ? 'grab' : 'zoom-in'); }
+        function reset(){ scale=1; tx=0; ty=0; apply(); }
+        function fitBase(){
+          var cw=inner.clientWidth, ch=inner.clientHeight;
+          var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height;
+          baseScale = (!nw||!nh||!cw||!ch) ? 1 : Math.min(cw/nw, ch/nh);
+          img.style.width = nw + 'px'; img.style.height='auto';
+        }
+        function clamp(){
+          var cw=inner.clientWidth, ch=inner.clientHeight;
+          var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height;
+          var sw=nw*baseScale*scale, sh=nh*baseScale*scale;
+          var mx=Math.max(0,(sw-cw)/2), my=Math.max(0,(sh-ch)/2);
+          if (tx> mx) tx= mx; if (tx<-mx) tx=-mx;
+          if (ty> my) ty= my; if (ty<-my) ty=-my;
+        }
+        function openFrom(el){
+          img.onload=function(){ fitBase(); reset(); };
+          img.src = el.getAttribute('src')||''; lb.classList.add('open');
+        }
+        function hide(){ lb.classList.remove('open'); img.src=''; }
+
+        document.addEventListener('click',function(e){
+          var t=e.target; if(t && t.classList && t.classList.contains('zoomable')) openFrom(t);
+        });
+        lb.addEventListener('click', function(e){ if(e.target===lb) hide(); });
+        btnClose.addEventListener('click', hide);
+        document.addEventListener('keydown', function(e){ if(e.key==='Escape') hide(); });
+
+        function onWheel(e){
+          e.preventDefault();
+          var dir=(e.deltaY<0)?1:-1, next=Math.min(MAX_Z,Math.max(MIN_Z, scale+dir*STEP));
+          if(next!==scale){ scale=next; clamp(); apply(); }
+        }
+        inner.addEventListener('wheel', onWheel, {passive:false});
+        img.addEventListener('wheel',   onWheel, {passive:false});
+
+        function canPan(){ return scale>1; }
+        function down(x,y){ if(!canPan()) return; dragging=true; startX=x; startY=y; startTx=tx; startTy=ty; document.body.style.userSelect='none'; apply(); }
+        function move(x,y){ if(!dragging) return; tx=startTx+(x-startX); ty=startTy+(y-startY); clamp(); apply(); }
+        function up(){ if(!dragging) return; dragging=false; document.body.style.userSelect=''; apply(); }
+
+        inner.addEventListener('mousedown', function(e){ down(e.clientX,e.clientY); });
+        document.addEventListener('mousemove', function(e){ move(e.clientX,e.clientY); });
+        document.addEventListener('mouseup', up);
+
+        inner.addEventListener('touchstart', function(e){ if(e.touches.length!==1) return; var t=e.touches[0]; down(t.clientX,t.clientY); }, {passive:true});
+        inner.addEventListener('touchmove', function(e){ if(!dragging||e.touches.length!==1) return; var t=e.touches[0]; move(t.clientX,t.clientY); }, {passive:true});
+        inner.addEventListener('touchend', up);
+        inner.addEventListener('touchcancel', up);
+
+        addEventListener('resize', function(){ if(!lb.classList.contains('open')) return; fitBase(); clamp(); apply(); });
+      })();
+    </script>
+  `;
+
+  // ==== RETURN HTML ====
   return `<!doctype html>
   <html lang="id">
   <head>
@@ -1339,87 +1420,10 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
       ${fab}
     </div>
 
-    <!-- Lightbox export -->
-    <div id="lb" aria-modal="true" role="dialog">
-      <button class="close" aria-label="Tutup">Tutup</button>
-      <div id="lbInner">
-        <img id="lbImg" alt="">
-      </div>
-    </div>
-
-    <script>
-      (function(){
-        var lb = document.getElementById('lb');
-        var img = document.getElementById('lbImg');
-        var inner = document.getElementById('lbInner');
-        var btnClose = lb.querySelector('.close');
-
-        var baseScale = 1;     // fit-to-container
-        var scale = 1;         // user zoom factor
-        var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
-
-        img.style.willChange = 'transform';
-        img.style.transformOrigin = 'center center';
-
-        function applyZoom(){
-          img.style.transform = 'scale(' + (baseScale * scale) + ')';
-          img.style.cursor = (scale > 1 ? 'zoom-out' : 'zoom-in');
-        }
-        function resetZoom(){ scale = 1; applyZoom(); }
-
-        function computeBaseScale(){
-          var cw = inner.clientWidth, ch = inner.clientHeight;
-          var nw = img.naturalWidth || img.width;
-          var nh = img.naturalHeight || img.height;
-          if(!nw || !nh || !cw || !ch){ baseScale = 1; return; }
-          baseScale = Math.min(cw/nw, ch/nh);
-          img.style.width = nw + 'px';
-          img.style.height = 'auto';
-        }
-
-        function openFromEl(el){
-          img.onload = function(){
-            computeBaseScale();
-            resetZoom(); // tampil awal pas/fit
-          };
-          img.src = el.getAttribute('src') || '';
-          lb.classList.add('open');
-        }
-        function hide(){
-          lb.classList.remove('open');
-          img.src = '';
-        }
-
-        document.addEventListener('click', function(e){
-          var t = e.target;
-          if(t && t.classList && t.classList.contains('zoomable')) openFromEl(t);
-        });
-        lb.addEventListener('click', function(e){ if(e.target === lb) hide(); });
-        btnClose.addEventListener('click', hide);
-        document.addEventListener('keydown', function(e){ if(e.key==='Escape') hide(); });
-
-        function onWheel(e){
-          e.preventDefault();
-          var dir = (e.deltaY < 0) ? 1 : -1; // up=in
-          var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir*STEP));
-          if(next !== scale){ scale = next; applyZoom(); }
-        }
-        inner.addEventListener('wheel', onWheel, {passive:false});
-        img.addEventListener('wheel',   onWheel, {passive:false});
-
-        inner.addEventListener('dblclick', resetZoom);
-        img.addEventListener('dblclick',   resetZoom);
-
-        addEventListener('resize', function(){
-          if(!lb.classList.contains('open')) return;
-          computeBaseScale(); applyZoom();
-        });
-      })();
-    </script>
+    ${lightbox}
   </body>
   </html>`;
 }
-
 
 /* =====================================================
    Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
