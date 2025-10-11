@@ -1076,9 +1076,26 @@ exportHtmlBtn?.addEventListener('click', () => {
   btn.addEventListener('click', exportPresentationHTML);
 })();
 
-function exportPresentationHTML(){
+async function exportPresentationHTML(){
   try {
-    const trades = load();
+    const tradesRaw = load();
+
+    // Lengkapi gambar: kalau trade hanya punya img_*_id (IndexedDB),
+    // ubah dulu ke dataURL agar HTML hasil export bersifat standalone.
+    const trades = [];
+    for (const t of tradesRaw){
+      const copy = {...t};
+      if (!copy.img_before_data && copy.img_before_id){
+        const b = await idbGet(copy.img_before_id);
+        copy.img_before_data = b ? await blobToDataURL(b) : '';
+      }
+      if (!copy.img_after_data && copy.img_after_id){
+        const b = await idbGet(copy.img_after_id);
+        copy.img_after_data  = b ? await blobToDataURL(b)  : '';
+      }
+      trades.push(copy);
+    }
+
     const { name:activeName } = getActiveProject();
     const projectName = activeName || 'Jurnal Aktif';
     const stats = computeStats(trades);
@@ -1426,12 +1443,45 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 }
 
 /* =====================================================
-   Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
+   Gambar: simpan sebagai Blob (IndexedDB) + kompres,
+   preview, drag & drop, lightbox, paste & URL.
    ===================================================== */
 
-const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB aman untuk localStorage
-let lastImgKind = 'before'; // target default untuk paste URL
+// --- [A] Mini helper IndexedDB (tanpa library) ---
+const DB_NAME = 'rr_journal_img_db';
+const DB_STORE = 'imgs';
+let __imgdb__;
+function idb() {
+  if (__imgdb__) return Promise.resolve(__imgdb__);
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE);
+    };
+    req.onsuccess = () => { __imgdb__ = req.result; res(__imgdb__); };
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbSet(key, blob){ const db = await idb(); return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readwrite'); tx.objectStore(DB_STORE).put(blob, key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
+async function idbGet(key){ const db = await idb(); return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readonly'); const rq=tx.objectStore(DB_STORE).get(key); rq.onsuccess=()=>res(rq.result||null); rq.onerror=()=>rej(rq.error); }); }
+async function idbDel(key){ const db = await idb(); return new Promise((res,rej)=>{ const tx=db.transaction(DB_STORE,'readwrite'); tx.objectStore(DB_STORE).delete(key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); }
 
+// --- [B] Kompres gambar sebelum simpan ---
+async function compressImage(file, {maxW=1400, maxH=1000, type='image/webp', quality=0.78} = {}) {
+  const bmp = await createImageBitmap(file);
+  const s = Math.min(1, maxW/bmp.width, maxH/bmp.height);
+  const w = Math.round(bmp.width*s), h = Math.round(bmp.height*s);
+  const c = Object.assign(document.createElement('canvas'), {width:w, height:h});
+  c.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  const blob = await new Promise(r => c.toBlob(r, type, quality));
+  return blob;
+}
+
+// --- [C] Konversi util ---
+async function blobToDataURL(blob){
+  return await new Promise((resolve,reject)=>{ const fr=new FileReader(); fr.onload=()=>resolve(fr.result); fr.onerror=reject; fr.readAsDataURL(blob); });
+}
 function isLikelyImageURL(t){
   try{
     if(!t) return false;
@@ -1440,92 +1490,106 @@ function isLikelyImageURL(t){
     return ['http:','https:'].includes(u.protocol) && /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(u.pathname);
   }catch{ return false; }
 }
-
-async function blobToDataURL(blob){
-  return await new Promise((resolve,reject)=>{
-    const fr = new FileReader();
-    fr.onload = ()=>resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(blob);
-  });
+async function fetchToBlob(url){
+  const res = await fetch(url, {mode:'cors'});
+  if(!res.ok) throw new Error('HTTP '+res.status);
+  return await res.blob();
 }
 
-async function fetchToDataURL(url){
-  try{
-    const res = await fetch(url, { mode:'cors' });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const blob = await res.blob();
-    if (blob.size > MAX_IMG_BYTES){
-      alert('Ukuran gambar dari URL terlalu besar (> ~3MB). Gunakan gambar yang lebih kecil.');
-      return '';
-    }
-    return await blobToDataURL(blob);
-  }catch(err){
-    console.error('Gagal fetch URL gambar:', err);
-    alert('Tidak bisa memuat link gambar (mungkin CORS diproteksi atau link tidak valid).');
-    return '';
+// --- [D] Hidden input untuk simpan ID gambar (bukan base64) ---
+function ensureImgIdInputs(){
+  if (!document.getElementById('editImgBeforeId')) {
+    const i = document.createElement('input'); i.type='hidden'; i.id='editImgBeforeId'; i.name='editImgBeforeId';
+    editForm.appendChild(i);
+  }
+  if (!document.getElementById('editImgAfterId')) {
+    const i = document.createElement('input'); i.type='hidden'; i.id='editImgAfterId'; i.name='editImgAfterId';
+    editForm.appendChild(i);
   }
 }
+ensureImgIdInputs();
+const editImgBeforeId = () => document.getElementById('editImgBeforeId');
+const editImgAfterId  = () => document.getElementById('editImgAfterId');
 
-async function urlToBase64Smart(url){
-  if(url.startsWith('data:image/')) return url; // sudah base64
-  return await fetchToDataURL(url);
-}
-
-async function fileToBase64(file){
-  if (!file) return '';
-  if (file.size > MAX_IMG_BYTES){
-    alert('Ukuran gambar terlalu besar. Maksimal sekitar 2–3MB.');
-    return '';
-  }
-  return new Promise((resolve,reject)=>{
-    const fr = new FileReader();
-    fr.onload = () => resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(file);
-  });
-}
-
-function setImagePreview(kind, base64){
-  if (kind==='before'){
-    if (base64){
-      editImgBeforeData.value = base64;
-      editImgBeforePreview.src = base64;
+// --- [E] Preview helper: dari DataURL lama ATAU dari id (Blob) ---
+async function setImagePreview(kind, srcOrEmpty){
+  // Jika dikasih string base64/URL langsung => tampilkan & kosongkan id
+  if (srcOrEmpty && typeof srcOrEmpty === 'string' && srcOrEmpty.startsWith('data:image/')) {
+    if (kind==='before'){
+      editImgBeforeData.value = srcOrEmpty;
+      editImgBeforePreview.src = srcOrEmpty;
       editImgBeforePreview.classList.remove('hidden');
-      btnClearImgBefore.classList.remove('hidden');
-      btnViewImgBefore.classList.remove('hidden');
+      btnClearImgBefore.classList.remove('hidden'); btnViewImgBefore.classList.remove('hidden');
+      editImgBeforeId().value = ''; // pakai data lama
     } else {
-      editImgBeforeData.value = '';
-      editImgBeforePreview.src = '';
-      editImgBeforePreview.classList.add('hidden');
-      btnClearImgBefore.classList.add('hidden');
-      btnViewImgBefore.classList.add('hidden');
-    }
-  } else {
-    if (base64){
-      editImgAfterData.value = base64;
-      editImgAfterPreview.src = base64;
+      editImgAfterData.value = srcOrEmpty;
+      editImgAfterPreview.src = srcOrEmpty;
       editImgAfterPreview.classList.remove('hidden');
-      btnClearImgAfter.classList.remove('hidden');
-      btnViewImgAfter.classList.remove('hidden');
-    } else {
-      editImgAfterData.value = '';
-      editImgAfterPreview.src = '';
-      editImgAfterPreview.classList.add('hidden');
-      btnClearImgAfter.classList.add('hidden');
-      btnViewImgAfter.classList.add('hidden');
+      btnClearImgAfter.classList.remove('hidden'); btnViewImgAfter.classList.remove('hidden');
+      editImgAfterId().value = '';
     }
+    return;
+  }
+
+  // kosongkan
+  if (!srcOrEmpty) {
+    if (kind==='before'){
+      editImgBeforeData.value=''; editImgBeforeId().value='';
+      editImgBeforePreview.src=''; editImgBeforePreview.classList.add('hidden');
+      btnClearImgBefore.classList.add('hidden'); btnViewImgBefore.classList.add('hidden');
+    } else {
+      editImgAfterData.value=''; editImgAfterId().value='';
+      editImgAfterPreview.src=''; editImgAfterPreview.classList.add('hidden');
+      btnClearImgAfter.classList.add('hidden'); btnViewImgAfter.classList.add('hidden');
+    }
+    return;
+  }
+
+  // kalau srcOrEmpty adalah objectURL / http URL:
+  if (kind==='before'){
+    editImgBeforePreview.src = srcOrEmpty;
+    editImgBeforePreview.classList.remove('hidden');
+    btnClearImgBefore.classList.remove('hidden'); btnViewImgBefore.classList.remove('hidden');
+  } else {
+    editImgAfterPreview.src = srcOrEmpty;
+    editImgAfterPreview.classList.remove('hidden');
+    btnClearImgAfter.classList.remove('hidden'); btnViewImgAfter.classList.remove('hidden');
   }
 }
 
+// --- [F] Simpan file/URL ke IndexedDB, set id ke hidden input + update preview ---
+async function storeBlobAndPreview(kind, blob){
+  const tradeId = editForm.id.value || uid(); // fallback
+  const id = `rrimg:${tradeId}:${kind}:${Date.now()}`;
+  await idbSet(id, blob);
+  const url = URL.createObjectURL(blob);
+
+  if (kind==='before'){
+    editImgBeforeId().value = id;
+    editImgBeforeData.value = '';      // jangan simpan base64 lagi
+  } else {
+    editImgAfterId().value = id;
+    editImgAfterData.value = '';
+  }
+  setImagePreview(kind, url);
+}
 async function handlePickFile(inputEl, kind){
-  const file = inputEl.files?.[0];
-  if (!file) return;
-  const b64 = await fileToBase64(file);
-  if (b64) setImagePreview(kind, b64);
-  inputEl.value = '';
+  const f = inputEl.files?.[0]; if(!f) return;
+  const blob = await compressImage(f);
+  await storeBlobAndPreview(kind, blob);
+  inputEl.value='';
+}
+async function handleURL(kind, url){
+  if (url.startsWith('data:image/')) {
+    // dataURL => ubah ke Blob dulu biar hemat storage
+    const blob = await (await fetch(url)).blob();
+    return storeBlobAndPreview(kind, blob);
+  }
+  const blob = await fetchToBlob(url);
+  return storeBlobAndPreview(kind, blob);
 }
 
+// --- [G] Drag&Drop + klik pick ---
 function setupDragDrop(areaEl, inputEl, kind){
   if (!areaEl || !inputEl) return;
   ['dragenter','dragover'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.add('drop-active'); lastImgKind = kind; }));
@@ -1533,165 +1597,159 @@ function setupDragDrop(areaEl, inputEl, kind){
   areaEl.addEventListener('drop', async e=>{
     const dt = e.dataTransfer; if(!dt) return;
     const file = dt.files?.[0];
-    if(file){
-      const b64 = await fileToBase64(file);
-      if (b64) setImagePreview(kind, b64);
-      return;
-    }
-    // Text/URL drop
+    if(file){ const b = await compressImage(file); await storeBlobAndPreview(kind, b); return; }
     const t = dt.getData('text');
-    if(isLikelyImageURL(t)){
-      const b64 = await urlToBase64Smart(t.trim());
-      if (b64) setImagePreview(kind, b64);
-    }
+    if (isLikelyImageURL(t)) { await handleURL(kind, t.trim()); }
   });
   areaEl.addEventListener('click', ()=> { lastImgKind = kind; inputEl.click(); });
 }
 
-/* lightbox */
-function openLightbox(src){
-  if (!src) return;
-  imgViewerImg.src = src;
-  imgViewer.classList.remove('hidden'); imgViewer.classList.add('flex');
-}
-function closeLightbox(){
-  imgViewer.classList.add('hidden'); imgViewer.classList.remove('flex');
-  imgViewerImg.src = '';
-}
+// --- [H] Lightbox sederhana ---
+function openLightbox(src){ if (!src) return; imgViewerImg.src = src; imgViewer.classList.remove('hidden'); imgViewer.classList.add('flex'); }
+function closeLightbox(){ imgViewer.classList.add('hidden'); imgViewer.classList.remove('flex'); imgViewerImg.src=''; }
 
+// wire events file pick
 editImgBefore?.addEventListener('change', ()=> { lastImgKind='before'; handlePickFile(editImgBefore,'before'); });
-editImgAfter?.addEventListener('change',  ()=> { lastImgKind='after';  handlePickFile(editImgAfter,'after'); });
-btnClearImgBefore?.addEventListener('click', ()=> setImagePreview('before',''));
-btnClearImgAfter?.addEventListener('click',  ()=> setImagePreview('after',''));
-btnViewImgBefore?.addEventListener('click',   ()=> openLightbox(editImgBeforeData.value));
-btnViewImgAfter?.addEventListener('click',    ()=> openLightbox(editImgAfterData.value));
+editImgAfter ?.addEventListener('change',  ()=> { lastImgKind='after' ; handlePickFile(editImgAfter ,'after'); });
+btnClearImgBefore?.addEventListener('click', async ()=>{ // hapus id+preview
+  const id = editImgBeforeId().value; if(id) await idbDel(id);
+  setImagePreview('before','');
+});
+btnClearImgAfter ?.addEventListener('click', async ()=>{
+  const id = editImgAfterId().value; if(id) await idbDel(id);
+  setImagePreview('after','');
+});
+btnViewImgBefore?.addEventListener('click', async ()=>{
+  const id = editImgBeforeId().value;
+  if (id){ const b = await idbGet(id); if(b) return openLightbox(URL.createObjectURL(b)); }
+  if (editImgBeforeData.value) openLightbox(editImgBeforeData.value);
+});
+btnViewImgAfter ?.addEventListener('click', async ()=>{
+  const id = editImgAfterId().value;
+  if (id){ const b = await idbGet(id); if(b) return openLightbox(URL.createObjectURL(b)); }
+  if (editImgAfterData.value) openLightbox(editImgAfterData.value);
+});
 imgViewerClose?.addEventListener('click', closeLightbox);
 imgViewer?.addEventListener('click', e=>{ if(e.target===imgViewer) closeLightbox(); });
 
 // drag-n-drop on labels
 setupDragDrop(dropBefore, editImgBefore, 'before');
-setupDragDrop(dropAfter,  editImgAfter,  'after');
+setupDragDrop(dropAfter , editImgAfter , 'after');
 
-/* ===== (BARU) — Tambah field URL untuk gambar + Paste global ===== */
-function injectUrlBarUnder(areaEl, kind){
-  if(!areaEl) return;
-  const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
-  if (document.getElementById(id)) return; // sudah dibuat
-
-  const wrap = document.createElement('div');
-  wrap.className = 'mt-2 flex gap-2';
-  wrap.innerHTML = `
-    <input id="${id}" type="url" placeholder="Tempel link gambar (https://… atau data:image/…)" class="flex-1 rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm" />
-    <button type="button" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Muat</button>
-  `;
-  areaEl.insertAdjacentElement('afterend', wrap);
-
-  const input = wrap.querySelector('input');
-  const btn   = wrap.querySelector('button');
-
-  const loader = async () => {
-    const url = (input.value||'').trim();
-    if (!isLikelyImageURL(url)) { alert('Link tidak valid. Pakai URL file gambar langsung.'); return; }
-    const b64 = await urlToBase64Smart(url);
-    if (b64) setImagePreview(kind, b64);
-  };
-
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
-  btn.addEventListener('click', loader);
-
-  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-}
-
-// inject URL bar bila ada drop zone//kogik ini membuat fungsi padte link gambar
+// --- [I] Field URL di bawah dropzone ---
 function injectUrlBarUnder(areaEl, kind){
   if(!areaEl) return;
   const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
   if (document.getElementById(id)) return;
-
-  // ambil class dari input angka agar identik tampilannya (terang)
-  const mimicClass =
-    (editForm?.entry_price?.className || form?.entry_price?.className) ||
-    'w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm ' +
-    'placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent';
-
+  const mimicClass = (editForm?.entry_price?.className || form?.entry_price?.className) ||
+    'w-full rounded-xl border border-slate-300 bg-white text-slate-900 px-3 py-2 text-sm';
   const wrap = document.createElement('div');
   wrap.className = 'mt-2 flex items-center gap-2';
-
   wrap.innerHTML = `
-    <input id="${id}" type="url"
-      placeholder="Tempel link gambar (https://… atau data:image/…)"
-      class="${mimicClass}" />
-    <button type="button"
-      class="h-[38px] px-3 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:ring-2 focus:ring-blue-500">
-      Muat
-    </button>
+    <input id="${id}" type="url" placeholder="Tempel link gambar (https://… atau data:image/…)" class="${mimicClass}" />
+    <button type="button" class="h-[38px] px-3 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500">Muat</button>
   `;
   areaEl.insertAdjacentElement('afterend', wrap);
-
-  const input = wrap.querySelector('input');
-  const btn   = wrap.querySelector('button');
-
-  // biar tinggi pas (kalau input acuan punya tinggi tertentu)
-  const ref = editForm?.entry_price || form?.entry_price;
-  if (ref) input.style.height = getComputedStyle(ref).height;
-
+  const input = wrap.querySelector('input'); const btn = wrap.querySelector('button');
   input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-
-  const loader = async () => {
-    const url = (input.value||'').trim();
-    if (!isLikelyImageURL(url)) { alert('Masukkan URL file gambar (.png/.jpg/.webp) atau data:image/…'); input.focus(); return; }
-    const b64 = await urlToBase64Smart(url);
-    if (b64) setImagePreview(kind, b64);
-  };
+  const loader = async ()=>{ const url=(input.value||'').trim(); if(!isLikelyImageURL(url)){ alert('Masukkan URL file gambar langsung.'); input.focus(); return; } await handleURL(kind, url); };
   input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
   btn.addEventListener('click', loader);
 }
 
+// inject saat modal edit dibuka (dipanggil dari openEdit di kode-mu)
+window.injectUrlBarUnder = injectUrlBarUnder;
 
-
-// Paste global: dukung gambar langsung & link gambar (auto-load)
+// --- [J] Paste global: gambar / url ---
+let lastImgKind = 'before';
 window.addEventListener('paste', async (e) => {
-  const dt = e.clipboardData || window.clipboardData;
-  if (!dt) return;
+  const dt = e.clipboardData || window.clipboardData; if (!dt) return;
 
-  // 1) Jika yang ditempel adalah GAMBAR (TradingView -> Salin gambar)
-  const items = dt.items || [];
-  for (const item of items) {
-    if (item.type && item.type.startsWith('image/')) {
-      const file = item.getAsFile?.();
-      if (file) {
-        const b64 = await fileToBase64(file);
-        if (b64) setImagePreview(lastImgKind, b64);
-        e.preventDefault();   // cegah tempel bitmap jadi teks
-        return;
-      }
+  // gambar bitmap di clipboard
+  for (const item of (dt.items||[])) {
+    if (item.type?.startsWith('image/')) {
+      const file = item.getAsFile?.(); if (file){ const b = await compressImage(file); await storeBlobAndPreview(lastImgKind, b); e.preventDefault(); return; }
     }
   }
 
-  // 2) Jika fokus di kolom URL kita, biarkan teks menempel lalu otomatis muat
+  // kalau sedang fokus di kolom url kita
   const el = document.activeElement;
   const isUrlInput = el && (el.id === 'editImgBeforeUrl' || el.id === 'editImgAfterUrl');
   if (isUrlInput) {
-    // debounce ringan supaya tidak dobel request
     clearTimeout(window.__urlPasteTimer__);
     window.__urlPasteTimer__ = setTimeout(async () => {
       const url = (el.value || '').trim();
       if (isLikelyImageURL(url)) {
         const kind = el.id === 'editImgBeforeUrl' ? 'before' : 'after';
-        const b64 = await urlToBase64Smart(url);
-        if (b64) setImagePreview(kind, b64);
+        await handleURL(kind, url);
       }
     }, 60);
-    return; // jangan preventDefault; biar teks masuk ke input
+    return;
   }
 
-  // 3) Fallback: jika clipboard berisi TEKS URL gambar & bukan di kolom URL
+  // fallback: teks URL gambar
   const text = dt.getData?.('text')?.trim() || '';
-  if (text && isLikelyImageURL(text)) {
-    const b64 = await urlToBase64Smart(text);
-    if (b64) setImagePreview(lastImgKind, b64);
-    e.preventDefault();
+  if (text && isLikelyImageURL(text)) { await handleURL(lastImgKind, text); e.preventDefault(); }
+});
+
+// --- [K] Buka modal edit -> tampilkan preview dari data lama (base64) ATAU id blob ---
+const _openEditOrig = openEdit;
+openEdit = async function(id){
+  const t = load().find(x=>x.id===id); if(!t) return;
+  ensureSymbolDropdownForEdit();
+  // isi form biasa
+  editForm.id.value = id;
+  editForm.setup_date.value = toDTInput(t.setup_date||'');
+  editForm.symbol.value = normalizeSymbol(t.symbol||'');
+  editForm.side.value   = t.side||'LONG';
+  editForm.entry_price.value = t.entry_price ?? 0;
+  editForm.stop_loss.value   = t.stop_loss ?? 0;
+
+  // isi hidden id (baru)
+  editImgBeforeId().value = t.img_before_id || '';
+  editImgAfterId().value  = t.img_after_id  || '';
+
+  // tampilkan preview: prioritas Blob by id, fallback base64 lama
+  if (t.img_before_id){
+    const b = await idbGet(t.img_before_id);
+    setImagePreview('before', b ? URL.createObjectURL(b) : '');
+    editImgBeforeData.value = ''; // bersihkan base64
+  } else {
+    setImagePreview('before', t.img_before_data || '');
   }
+  if (t.img_after_id){
+    const b = await idbGet(t.img_after_id);
+    setImagePreview('after', b ? URL.createObjectURL(b) : '');
+    editImgAfterData.value = '';
+  } else {
+    setImagePreview('after', t.img_after_data || '');
+  }
+
+  applyPriceFormatToEditForm();
+  injectUrlBarUnder(document.getElementById('dropBefore'),'before');
+  injectUrlBarUnder(document.getElementById('dropAfter'),'after');
+  editModal.classList.remove('hidden'); editModal.classList.add('flex');
+};
+
+// --- [L] Saat submit modal edit -> simpan id Blob (baru), tidak lagi base64 ---
+const _editSubmitOrig = editForm?.onsubmit;
+editForm?.addEventListener('submit', e=>{
+  e.preventDefault();
+  const symbol = normalizeSymbol(editForm.symbol.value || '');
+  const prec   = precisionForSymbol(symbol);
+  updateTrade(editForm.id.value, {
+    setup_date: editForm.setup_date.value || '',
+    symbol,
+    side: editForm.side.value,
+    entry_price: roundTo(Number(editForm.entry_price.value)||0, prec),
+    stop_loss:   roundTo(Number(editForm.stop_loss.value)||0,  prec),
+    // simpan id blob, dan bersihkan base64
+    img_before_id: editImgBeforeId().value || '',
+    img_after_id:  editImgAfterId().value  || '',
+    img_before_data: '',  // kosongkan supaya hemat storage
+    img_after_data:  ''
+  });
+  closeEdit(); refresh();
 });
 
 
