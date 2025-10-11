@@ -326,24 +326,28 @@ function refresh(){
   calcSim(rnet); // update simulasi balance
 }
 
-/* ===== CRUD data ===== */
 function addTrade(obj){ 
   const data = load(); 
-  data.push(obj);   // <— ubah dari unshift ke push
+  data.push(obj);   
   save(data); 
-}
-function addTrade(obj){ 
-  const data = load(); 
-  data.push(obj);         // tambah di bawah
-  save(data); 
-  renderTrades();         // render ulang tabel
-  
-  // === scroll otomatis ke bawah ===
+
+  // 🔄 panggil fungsi yang menggambar ulang tabel (sesuaikan dengan milikmu)
+  if (typeof refresh === 'function') {
+    refresh();
+  } else if (typeof renderTrades === 'function') {
+    renderTrades();
+  } else if (typeof renderTable === 'function') {
+    renderTable();
+  }
+
+  // 📜 scroll otomatis ke bawah tabel setelah render
   const tbl = document.querySelector('.table-scroll');
   if (tbl) {
-    setTimeout(() => { tbl.scrollTop = tbl.scrollHeight; }, 100);
+    setTimeout(() => {
+      tbl.scrollTo({ top: tbl.scrollHeight, behavior: 'smooth' });
+    }, 100);
   }
-}
+
 
 function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
 function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
