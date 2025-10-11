@@ -1132,7 +1132,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   .grow{flex:1}
   .sep{height:1px;background:var(--ring);margin:10px 0}
 
-  /* header sticky + konten */
+  /* header sticky */
   .report-header{
     position: sticky; top:0; z-index:50;
     background: rgba(15,23,42,.96);
@@ -1154,12 +1154,23 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   #fabScroll:active{ transform:translateY(1px) }
   #fabScroll svg{ width:18px; height:18px }
 
-  /* Lightbox export + ZOOM scroll */
+  /* Lightbox export + zoom */
   #lb{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:100}
   #lb.open{display:flex}
   #lb .close{position:absolute; top:14px; right:14px; background:#111827; color:#fff; border:1px solid var(--ring); padding:6px 10px; border-radius:10px; cursor:pointer}
-  #lbInner{position:relative; overflow:hidden; max-width:92vw; max-height:90vh; border-radius:12px; border:1px solid var(--ring); background:#000; box-shadow:0 20px 60px rgba(0,0,0,.55)}
-  #lbImg{display:block; max-width:none; max-height:none; user-select:none; -webkit-user-drag:none; transform-origin:center center; cursor:zoom-in}
+
+  #lbInner{
+    position:relative; overflow:hidden;
+    max-width:92vw; max-height:90vh;
+    border-radius:12px; border:1px solid var(--ring);
+    background:#000; box-shadow:0 20px 60px rgba(0,0,0,.55);
+    display:flex; align-items:center; justify-content:center;
+  }
+  #lbImg{
+    display:block; max-width:none; max-height:none;
+    user-select:none; -webkit-user-drag:none;
+    transform-origin:center center; cursor:zoom-in;
+  }
 
   @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
   @media print{ body{background:#fff;color:#000} .wrap{max-width:100%;padding:0 16px} .card,.block,.thumb,.eval{background:#fff;border-color:#ddd} #fabScroll{display:none !important} }
@@ -1226,16 +1237,16 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
           <div>
             <div class="thumb">${
               imgBefore
-              ? `<img loading="lazy" class="zoomable" src="${imgBefore}" alt="Sebelum">`
-              : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
+                ? `<img loading="lazy" class="zoomable" src="${imgBefore}" alt="Sebelum">`
+                : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
             }</div>
             <div class="cap">Sebelum — (placeholder/chart atau gambar sebelum)</div>
           </div>
           <div>
             <div class="thumb">${
               imgAfter
-              ? `<img loading="lazy" class="zoomable" src="${imgAfter}" alt="Sesudah">`
-              : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
+                ? `<img loading="lazy" class="zoomable" src="${imgAfter}" alt="Sesudah">`
+                : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`
             }</div>
             <div class="cap">Sesudah — (placeholder/chart atau gambar sesudah)</div>
           </div>
@@ -1311,7 +1322,6 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     </script>
   `;
 
-  // ==== HTML lengkap + lightbox + script ZOOM WHEEL
   return `<!doctype html>
   <html lang="id">
   <head>
@@ -1339,51 +1349,71 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
     <script>
       (function(){
-        // buka lightbox saat klik gambar
         var lb = document.getElementById('lb');
         var img = document.getElementById('lbImg');
         var inner = document.getElementById('lbInner');
         var btnClose = lb.querySelector('.close');
 
+        var baseScale = 1;     // fit-to-container
+        var scale = 1;         // user zoom factor
+        var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
+
+        img.style.willChange = 'transform';
+        img.style.transformOrigin = 'center center';
+
+        function applyZoom(){
+          img.style.transform = 'scale(' + (baseScale * scale) + ')';
+          img.style.cursor = (scale > 1 ? 'zoom-out' : 'zoom-in');
+        }
+        function resetZoom(){ scale = 1; applyZoom(); }
+
+        function computeBaseScale(){
+          var cw = inner.clientWidth, ch = inner.clientHeight;
+          var nw = img.naturalWidth || img.width;
+          var nh = img.naturalHeight || img.height;
+          if(!nw || !nh || !cw || !ch){ baseScale = 1; return; }
+          baseScale = Math.min(cw/nw, ch/nh);
+          img.style.width = nw + 'px';
+          img.style.height = 'auto';
+        }
+
         function openFromEl(el){
+          img.onload = function(){
+            computeBaseScale();
+            resetZoom(); // tampil awal pas/fit
+          };
           img.src = el.getAttribute('src') || '';
           lb.classList.add('open');
-          resetZoom();
         }
         function hide(){
           lb.classList.remove('open');
           img.src = '';
-          resetZoom();
         }
+
         document.addEventListener('click', function(e){
           var t = e.target;
-          if(t && t.classList && t.classList.contains('zoomable')){
-            openFromEl(t);
-          }
+          if(t && t.classList && t.classList.contains('zoomable')) openFromEl(t);
         });
         lb.addEventListener('click', function(e){ if(e.target === lb) hide(); });
         btnClose.addEventListener('click', hide);
         document.addEventListener('keydown', function(e){ if(e.key==='Escape') hide(); });
 
-        // === ZOOM dengan scroll ===
-        var scale = 1, MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
-        img.style.transformOrigin = 'center center';
-        img.style.willChange = 'transform';
-        function applyZoom(){
-          img.style.transform = 'scale(' + scale + ')';
-          img.style.cursor = (scale > 1 ? 'zoom-out' : 'zoom-in');
-        }
-        function resetZoom(){ scale = 1; applyZoom(); }
         function onWheel(e){
           e.preventDefault();
-          var dir = (e.deltaY < 0) ? 1 : -1;
+          var dir = (e.deltaY < 0) ? 1 : -1; // up=in
           var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir*STEP));
           if(next !== scale){ scale = next; applyZoom(); }
         }
         inner.addEventListener('wheel', onWheel, {passive:false});
         img.addEventListener('wheel',   onWheel, {passive:false});
+
         inner.addEventListener('dblclick', resetZoom);
         img.addEventListener('dblclick',   resetZoom);
+
+        addEventListener('resize', function(){
+          if(!lb.classList.contains('open')) return;
+          computeBaseScale(); applyZoom();
+        });
       })();
     </script>
   </body>
