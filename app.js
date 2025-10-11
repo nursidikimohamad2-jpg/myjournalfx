@@ -361,13 +361,11 @@ function renderTrades(){
   if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
 }
 
-function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
-function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
-
 /* ===== edit modal ===== */
 function openEdit(id){
   const t = load().find(x=>x.id===id); if(!t) return;
   ensureSymbolDropdownForEdit();
+data.sort((a,b)=> new Date(a.setup_date) - new Date(b.setup_date));
 
   // isi form
   editForm.id.value = id;
