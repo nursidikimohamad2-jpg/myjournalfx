@@ -443,55 +443,167 @@
   })();
   </script>
 
-  <!-- === Tambahan: Zoom pakai scroll untuk Lightbox halaman utama === -->
-  <script>
-  (function(){
-    var viewer   = document.getElementById('imgViewer');
-    var inner    = document.getElementById('imgViewerInner');
-    var img      = document.getElementById('imgViewerImg');
-    var btnClose = document.getElementById('imgViewerClose');
+    <style>
+      /* === LIGHTBOX + ZOOM & PAN === */
+      #lb{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:100}
+      #lb.open{display:flex}
+      #lb .close{position:absolute; top:14px; right:14px; background:#111827; color:#fff; border:1px solid rgba(255,255,255,.08); padding:6px 10px; border-radius:10px; cursor:pointer}
 
-    // state zoom sederhana
-    var scale = 1;
-    var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
+      #lbInner{
+        position:relative; overflow:hidden;
+        max-width:92vw; max-height:90vh;
+        border-radius:12px; border:1px solid rgba(255,255,255,.08);
+        background:#000; box-shadow:0 20px 60px rgba(0,0,0,.55);
+        display:flex; align-items:center; justify-content:center;
+      }
+      #lbImg{
+        display:block; max-width:none; max-height:none;
+        user-select:none; -webkit-user-drag:none;
+        transform-origin:center center; cursor:zoom-in;
+      }
+    </style>
 
-    function applyZoom(){
-      img.style.transform = 'scale(' + scale + ')';
-      img.style.cursor = (scale > 1 ? 'zoom-out' : 'zoom-in');
-    }
-    function resetZoom(){
-      scale = 1;
-      applyZoom();
-    }
+    <div id="lb" aria-modal="true" role="dialog">
+      <button class="close" aria-label="Tutup">Tutup</button>
+      <div id="lbInner">
+        <img id="lbImg" alt="">
+      </div>
+    </div>
 
-    // zoom via scroll (wheel) di area gambar
-    inner.addEventListener('wheel', function(e){
-      if (viewer.classList.contains('hidden')) return; // lightbox tertutup
-      e.preventDefault(); // cegah scroll body
-      var dir  = e.deltaY < 0 ? 1 : -1;               // up = zoom in
-      var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir * STEP));
-      if (next !== scale){ scale = next; applyZoom(); }
-    }, { passive:false });
+    <script>
+      (function(){
+        var lb = document.getElementById('lb');
+        var img = document.getElementById('lbImg');
+        var inner = document.getElementById('lbInner');
+        var btnClose = lb.querySelector('.close');
 
-    // double-click untuk reset zoom
-    inner.addEventListener('dblclick', function(){
-      resetZoom();
-    });
+        // ========= ZOOM (fit-first) =========
+        var baseScale = 1;      // agar awalnya fit ke frame
+        var scale = 1;          // faktor zoom (1..MAX_Z)
+        var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
 
-    // saat tombol Tutup diklik, reset zoom agar bersih
-    btnClose.addEventListener('click', function(){
-      resetZoom();
-    });
+        // ========= PAN (geser) =========
+        var tx = 0, ty = 0;     // posisi geser
+        var startX=0, startY=0, startTx=0, startTy=0;
+        var dragging = false;
 
-    // opsional: tekan ESC juga reset (selain menutup via app.js)
-    document.addEventListener('keydown', function(e){
-      if (e.key === 'Escape') resetZoom();
-    });
+        img.style.willChange = 'transform';
+        img.style.transformOrigin = 'center center';
 
-    // awal
-    resetZoom();
-  })();
-  </script>
+        function applyTransform(){
+          img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (baseScale * scale) + ')';
+          img.style.cursor = dragging ? 'grabbing' : (scale > 1 ? 'grab' : 'zoom-in');
+        }
+        function resetZoomPan(){
+          scale = 1; tx = 0; ty = 0; applyTransform();
+        }
 
-</body>
-</html>
+        function computeBaseScale(){
+          var cw = inner.clientWidth, ch = inner.clientHeight;
+          var nw = img.naturalWidth || img.width;
+          var nh = img.naturalHeight || img.height;
+          if(!nw || !nh || !cw || !ch){ baseScale = 1; return; }
+          baseScale = Math.min(cw/nw, ch/nh);
+          img.style.width  = nw + 'px';   // kunci ke natural; transform yg atur tampilan
+          img.style.height = 'auto';
+        }
+
+        function clampPan(){
+          var cw = inner.clientWidth, ch = inner.clientHeight;
+          var nw = img.naturalWidth || img.width;
+          var nh = img.naturalHeight || img.height;
+          var sw = nw * baseScale * scale;
+          var sh = nh * baseScale * scale;
+          var maxX = Math.max(0, (sw - cw)/2);
+          var maxY = Math.max(0, (sh - ch)/2);
+          if (tx >  maxX) tx =  maxX;
+          if (tx < -maxX) tx = -maxX;
+          if (ty >  maxY) ty =  maxY;
+          if (ty < -maxY) ty = -maxY;
+        }
+
+        function openFromEl(el){
+          img.onload = function(){
+            computeBaseScale();
+            resetZoomPan(); // mulai fit
+          };
+          img.src = el.getAttribute('src') || '';
+          lb.classList.add('open');
+        }
+        function hide(){
+          lb.classList.remove('open');
+          img.src = '';
+        }
+
+        // buka dari gambar kecil (class="zoomable")
+        document.addEventListener('click', function(e){
+          var t = e.target;
+          if (t && t.classList && t.classList.contains('zoomable')) openFromEl(t);
+        });
+
+        // tutup
+        lb.addEventListener('click', function(e){ if(e.target === lb) hide(); });
+        btnClose.addEventListener('click', hide);
+        document.addEventListener('keydown', function(e){ if(e.key === 'Escape') hide(); });
+
+        // WHEEL ZOOM
+        function onWheel(e){
+          e.preventDefault();
+          var dir = (e.deltaY < 0) ? 1 : -1;         // up=in
+          var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir*STEP));
+          if (next !== scale){
+            scale = next;
+            clampPan();
+            applyTransform();
+          }
+        }
+        inner.addEventListener('wheel', onWheel, {passive:false});
+        img.addEventListener('wheel',   onWheel, {passive:false});
+
+        // DRAG PAN (mouse + touch) — hanya saat zoom > 1
+        function canPan(){ return scale > 1; }
+        function onDown(x,y){
+          if (!canPan()) return;
+          dragging = true;
+          startX = x; startY = y; startTx = tx; startTy = ty;
+          document.body.style.userSelect = 'none';
+          applyTransform();
+        }
+        function onMove(x,y){
+          if (!dragging) return;
+          tx = startTx + (x - startX);
+          ty = startTy + (y - startY);
+          clampPan();
+          applyTransform();
+        }
+        function onUp(){
+          if (!dragging) return;
+          dragging = false;
+          document.body.style.userSelect = '';
+          applyTransform();
+        }
+
+        // mouse
+        inner.addEventListener('mousedown', function(e){ onDown(e.clientX, e.clientY); });
+        document.addEventListener('mousemove', function(e){ onMove(e.clientX, e.clientY); });
+        document.addEventListener('mouseup', onUp);
+
+        // touch
+        inner.addEventListener('touchstart', function(e){
+          if (e.touches.length !== 1) return;
+          var t = e.touches[0]; onDown(t.clientX, t.clientY);
+        }, {passive:true});
+        inner.addEventListener('touchmove', function(e){
+          if (!dragging || e.touches.length !== 1) return;
+          var t = e.touches[0]; onMove(t.clientX, t.clientY);
+        }, {passive:true});
+        inner.addEventListener('touchend', onUp);
+        inner.addEventListener('touchcancel', onUp);
+
+        // resize → fit ulang & clamp pan
+        addEventListener('resize', function(){
+          if(!lb.classList.contains('open')) return;
+          computeBaseScale(); clampPan(); applyTransform();
+        });
+      })();
+    </script>
