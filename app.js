@@ -325,106 +325,9 @@ function refresh(){
 }
 
 /* ===== CRUD data ===== */
-// Helper: panggil fungsi render yang tersedia di proyekmu
-function redraw(){
-  if (typeof refresh === 'function') {
-    refresh();
-  } else if (typeof renderTrades === 'function') {
-    renderTrades();
-  } else if (typeof renderTable === 'function') {
-    renderTable();
-  }
-}
-
-function addTrade(obj){ 
-  const data = load(); 
-  data.push(obj);        // tambah di akhir → baris baru di bawah
-  save(data); 
-
-  // render ulang
-  redraw();
-
-  // scroll otomatis ke bawah setelah render
-  const tbl = document.querySelector('.table-scroll');
-  if (tbl) {
-    setTimeout(() => {
-      // gunakan smooth biar enak dilihat
-      tbl.scrollTo({ top: tbl.scrollHeight, behavior: 'smooth' });
-    }, 100);
-  }
-}
-
-function updateTrade(id, patch){
-  const data = load();
-  const i = data.findIndex(x => x.id === id);
-  if (i < 0) return;
-
-  // simpan posisi scroll sekarang agar tidak “loncat”
-  const tbl = document.querySelector('.table-scroll');
-  const prevTop = tbl ? tbl.scrollTop : 0;
-
-  data[i] = { ...data[i], ...patch };
-  save(data);
-
-  // render ulang
-  redraw();
-
-  // kembalikan ke posisi sebelumnya
-  if (tbl) {
-    setTimeout(() => { tbl.scrollTop = prevTop; }, 60);
-  }
-}
-
-function deleteTrade(id){
-  const tbl = document.querySelector('.table-scroll');
-  const prevTop = tbl ? tbl.scrollTop : 0;
-
-  const data = load().filter(x => x.id !== id);
-  save(data);
-
-  // render ulang
-  redraw();
-
-  // jaga posisi scroll (agar tidak lari ke atas)
-  if (tbl) {
-    setTimeout(() => { tbl.scrollTop = prevTop; }, 60);
-  }
-}
-
-// === RENDER TABEL (urut lama → baru; entry baru di bawah) ===
-function renderTrades(){
-  const tbody = document.getElementById('tradeList');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-
-  // Ambil data dari storage versi kamu
-  const rows = load().slice().sort((a,b)=>{
-    const da = new Date(a?.setup_date || a?.createdAt || 0);
-    const db = new Date(b?.setup_date || b?.createdAt || 0);
-    if (!isNaN(da) && !isNaN(db)) return da - db;
-    const ia = (a?.id || '').toString();
-    const ib = (b?.id || '').toString();
-    return ia.localeCompare(ib);
-  });
-
-  for (const t of rows){
-    const tr = (typeof buildTradeRow === 'function')
-      ? buildTradeRow(t)
-      : document.createElement('tr'); // fallback aman
-    tbody.appendChild(tr); // → baris baru selalu di bawah
-  }
-
-  // opsional: panggil kalkulasi jika ada
-  if (typeof updateTotals === 'function') updateTotals(rows);
-  if (typeof updateProbabilities === 'function') updateProbabilities(rows);
-  if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
-}
-
+function addTrade(obj){ const data = load(); data.unshift(obj); save(data); }
 function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
 function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
-  // ✅ inject kolom URL setiap kali modal dibuka (agar tidak hilang)
-  injectUrlBarUnder(document.getElementById('dropBefore'), 'before');
-  injectUrlBarUnder(document.getElementById('dropAfter'),  'after');
 
 /* ===== edit modal ===== */
 function openEdit(id){
@@ -447,6 +350,9 @@ function openEdit(id){
   editModal.classList.remove('hidden'); editModal.classList.add('flex');
 }
 function closeEdit(){ editModal.classList.add('hidden'); editModal.classList.remove('flex'); }
+  // ✅ inject kolom URL setiap kali modal dibuka (agar tidak hilang)
+  injectUrlBarUnder(document.getElementById('dropBefore'), 'before');//ini untuk menempelkan url agar aktif
+  injectUrlBarUnder(document.getElementById('dropAfter'),  'after');
 
 /* ===== projects modal ===== */
 function renderProjects(){
@@ -674,76 +580,6 @@ projectsList?.addEventListener('click', e=>{
     }
   }
 });
-/* ===== Quick Save ke Project Aktif (“Simpan (NAMA)”) ===== */
-const saveToActiveBtn = document.querySelector('#saveToActiveBtn');
-
-/* Tampilkan/ubah label tombol sesuai project aktif */
-function updateActiveProjectUI(){
-  if (!saveToActiveBtn) return;
-  const act = (typeof getActiveProject === 'function' ? getActiveProject() : null) || { id:'', name:'' };
-
-  if (act && act.id){
-    saveToActiveBtn.textContent = `Simpan (${act.name})`;
-    saveToActiveBtn.classList.remove('hidden');
-    saveToActiveBtn.disabled = false;
-  }else{
-    saveToActiveBtn.textContent = 'Simpan (—)';
-    saveToActiveBtn.classList.add('hidden'); // sembunyikan jika belum ada project aktif
-    saveToActiveBtn.disabled = true;
-  }
-}
-
-/* Klik “Simpan (NAMA)” -> masukkan jurnal aktif ke project aktif */
-saveToActiveBtn?.addEventListener('click', ()=>{
-  const trades = typeof load === 'function' ? load() : [];
-  if (!trades.length){
-    alert('Belum ada data jurnal untuk disimpan.');
-    return;
-  }
-
-  const act = typeof getActiveProject === 'function' ? getActiveProject() : null;
-  if (!act?.id){
-    alert('Tidak ada project aktif. Gunakan "Simpan Project" atau buka salah satu project dulu.');
-    return;
-  }
-
-  const projects = typeof loadProj === 'function' ? loadProj() : [];
-  const idx = projects.findIndex(p => p.id === act.id);
-  if (idx === -1){
-    alert('Project aktif tidak ditemukan. Pilih ulang di menu Projects.');
-    return;
-  }
-
-  const snapshot = JSON.parse(JSON.stringify(trades));
-  const settings = (typeof getSettings === 'function') ? getSettings() : undefined;
-
-  // Default: MENAMBAH ke isi project (append). Ganti jadi overwrite bila perlu.
-  projects[idx].trades = [ ...(projects[idx].trades || []), ...snapshot ];
-  if (settings) projects[idx].settings = settings;
-  projects[idx].updatedAt = (typeof nowISO === 'function' ? nowISO() : new Date().toISOString());
-
-  if (typeof saveProj === 'function') saveProj(projects);
-  if (typeof save === 'function') save([]);         // kosongkan jurnal aktif setelah tersimpan
-  if (typeof refresh === 'function') refresh();
-  if (typeof calcSim === 'function') calcSim();
-  updateActiveProjectUI();
-
-  alert(`Berhasil menambahkan ${snapshot.length} trade ke project "${projects[idx].name}".`);
-});
-
-/* Pastikan UI tombol ikut update SETIAP kali project aktif berubah */
-if (typeof setActiveProject === 'function') {
-  const __origSetActiveProject = setActiveProject;
-  window.setActiveProject = function(id, name){
-    __origSetActiveProject(id, name);
-    updateActiveProjectUI();
-  };
-}
-
-/* Panggil saat awal load */
-updateActiveProjectUI();
-
-
 
 /* ===== Simulasi Balance ===== */
 function getSettings(){
