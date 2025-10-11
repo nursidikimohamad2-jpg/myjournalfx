@@ -1402,7 +1402,179 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     </script>
   `;
 
-  // ==== RETURN HTML ====
+ function buildPresentationHTML({ projectName, createdAt, trades, stats }) {
+  const css = `
+  :root{--rrp-bg:#0b1220;--rrp-panel:#0f172a;--rrp-text:#e2e8f0;--rrp-muted:#94a3b8;--rrp-ring:rgba(255,255,255,.08);--rrp-pos:#10b981;--rrp-neg:#f43f5e}
+  *{box-sizing:border-box}
+  body{margin:0;background:#07111f;color:var(--rrp-text);font:14px/1.5 system-ui,Inter,Segoe UI,Roboto}
+
+  /* --- kartu & layout dalam file export --- */
+  .rrp-wrap{max-width:1180px;margin:0 auto;padding:28px}
+  .rrp-h1{font-size:28px;margin:0 0 4px}
+  .rrp-muted{color:var(--rrp-muted)}
+  .rrp-cards{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:16px 0 22px}
+  .rrp-card{background:rgba(15,23,42,.88);border:1px solid var(--rrp-ring);border-radius:12px;padding:14px;min-height:72px;display:flex;flex-direction:column;gap:6px}
+  .rrp-k{font-size:12px;color:var(--rrp-muted)} .rrp-v{font-size:18px;font-weight:700}
+  .rrp-pos{color:var(--rrp-pos)} .rrp-neg{color:var(--rrp-neg)}
+  .rrp-block{background:rgba(15,23,42,.88);border:1px solid var(--rrp-ring);border-radius:14px;padding:16px;margin:14px 0}
+  .rrp-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .rrp-thumb{background:#0b1628;border:1px solid var(--rrp-ring);height:260px;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
+  .rrp-thumb>img{max-width:100%;max-height:100%;object-fit:contain}
+  .rrp-cap{font-size:12px;color:var(--rrp-muted);margin-top:6px}
+  .rrp-badge{display:inline-flex;align-items:center;gap:6px;padding:.2rem .55rem;border-radius:999px;border:1px solid var(--rrp-ring);font-size:12px}
+  .LONG{background:#032a3a;color:#aaf;border-color:#0ea5e9}
+  .SHORT{background:#3a1a1a;color:#ffd6d6;border-color:#f97316}
+  .TP1,.TP2,.TP3{background:rgba(16,185,129,.1);color:#a7f3d0;border-color:#10b981}
+  .SL{background:rgba(244,63,94,.1);color:#fecaca;border-color:#f43f5e}
+  table.rrp-meta{width:100%;border-collapse:separate;border-spacing:0 8px}
+  table.rrp-meta td{padding:8px 10px;border-radius:8px;background:#0c172a;border:1px solid var(--rrp-ring)}
+  table.rrp-meta td.rrp-k{width:25%;color:#9fb1c5}
+  table.rrp-meta td.rrp-v{text-align:right;font-weight:600}
+  .rrp-eval{background:#0c172a;border:1px solid var(--rrp-ring);border-radius:8px;padding:10px 12px;min-height:120px}
+  .rrp-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+  .rrp-sym{font-size:18px;font-weight:700}
+  .rrp-time{font-size:12px;color:var(--rrp-muted)}
+  .rrp-flex{display:flex;gap:16px}
+  .rrp-grow{flex:1}
+
+  /* header sticky hanya untuk file export */
+  .rrp-header{position:sticky;top:0;z-index:5;background:rgba(15,23,42,.96);backdrop-filter:blur(6px);border-bottom:1px solid var(--rrp-ring);box-shadow:0 6px 20px rgba(0,0,0,.25)}
+  .rrp-main{padding-top:12px}
+
+  /* FAB up/down (file export) */
+  #rrp-fab{position:fixed;right:16px;bottom:16px;display:none;width:44px;height:44px;border-radius:9999px;background:#0b1628;color:#e5f0ff;border:1px solid var(--rrp-ring);box-shadow:0 8px 24px rgba(0,0,0,.35);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  #rrp-fab:hover{filter:brightness(1.12)}
+  #rrp-fab svg{width:18px;height:18px}
+
+  /* ======= STAGE (Zoom + Pan + Draw) ======= */
+  #rrp-stage{position:relative;width:100vw;height:100vh;overflow:hidden;background:#07111f;touch-action:none}
+  #rrp-inner{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+
+  /* Canvas & toolbar ikut transform (dinamis) */
+  #rrp-annot{position:absolute;left:0;top:0;pointer-events:none}
+  .rrp-toolbar{position:absolute;right:18px;top:18px;z-index:10;display:flex;align-items:center;gap:8px;background:rgba(15,23,42,.92);border:1px solid var(--rrp-ring);border-radius:12px;padding:8px 10px;box-shadow:0 8px 24px rgba(0,0,0,.35)}
+  .rrp-toolbar *{font:12px system-ui,Inter,Segoe UI,Roboto}
+  .rrp-toolbar label{color:#9fb1c5}
+  .rrp-toolbar input[type="color"]{width:30px;height:22px;padding:0;border:none;background:transparent}
+  .rrp-toolbar button{background:#0b1628;color:#e5f0ff;border:1px solid rgba(255,255,255,.15);border-radius:8px;padding:6px 10px;cursor:pointer}
+  .rrp-toolbar button:hover{filter:brightness(1.12)}
+  @media (max-width:900px){ .rrp-row{grid-template-columns:1fr} .rrp-cards{grid-template-columns:repeat(2,1fr)} }
+  @media print{ body{background:#fff;color:#000} .rrp-wrap{max-width:100%;padding:0 16px} .rrp-card,.rrp-block,.rrp-thumb,.rrp-eval{background:#fff;border-color:#ddd} #rrp-fab,.rrp-toolbar{display:none !important} }
+  `;
+
+  const fmt = n => (+n).toLocaleString('id-ID', { minimumFractionDigits:2, maximumFractionDigits:2 });
+  const fmt0 = n => (+n).toLocaleString('id-ID', { maximumFractionDigits:0 });
+  const signClass = n => (n>=0 ? 'rrp-pos' : 'rrp-neg');
+
+  const win  = stats?.results?.wins ?? 0;
+  const loss = stats?.results?.counts?.SL ?? 0;
+
+  const header = `
+    <div class="rrp-header">
+      <div class="rrp-wrap">
+        <h1 class="rrp-h1">${projectName}</h1>
+        <div class="rrp-muted">Rentang: ${stats?.range?.min||'-'} — ${stats?.range?.max||'-'} • Disusun otomatis dari RR Journal</div>
+        <div class="rrp-cards">
+          <div class="rrp-card"><div class="rrp-k">Transaksi</div><div class="rrp-v">${fmt0(stats.total)}</div></div>
+          <div class="rrp-card"><div class="rrp-k">Win / Loss</div><div class="rrp-v">${fmt0(win)} / ${fmt0(loss)}</div></div>
+          <div class="rrp-card"><div class="rrp-k">Total R (Net)</div><div class="rrp-v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
+          <div class="rrp-card"><div class="rrp-k">1R (USD)</div><div class="rrp-v">$${fmt(stats.sim.oneR)}</div></div>
+          <div class="rrp-card"><div class="rrp-k">P/L (USD)</div><div class="rrp-v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="rrp-main"></div>
+  `;
+
+  // running sim
+  const oneR = stats.sim.oneR;
+  let runR=0, runPnlUSD=0, runEq=stats.sim.base;
+
+  const tradeCards = (trades||[]).map(t=>{
+    const sym  = normalizeSymbol(t.symbol);
+    const prec = precisionForSymbol(sym);
+    const entry = +t.entry_price || 0;
+    const sl    = +t.stop_loss   || 0;
+    const d     = Math.abs(entry - sl);
+    const tp1   = t.side==='LONG'? entry+d   : entry-d;
+    const tp2   = t.side==='LONG'? entry+2*d : entry-2*d;
+    const tp3   = t.side==='LONG'? entry+3*d : entry-3*d;
+
+    const [r1,r2,r3] = rByResult(t.result||'');
+    const rnet       = netROf(t.result||'');
+
+    runR += rnet; runPnlUSD = runR * oneR; runEq = stats.sim.base + runPnlUSD;
+
+    const imgBefore = t.img_before_data || '';
+    const imgAfter  = t.img_after_data  || '';
+    const price = v => toFixedBy(v, prec);
+
+    return `
+      <div class="rrp-block rrp-wrap">
+        <div class="rrp-head">
+          <div class="rrp-sym">${sym}</div>
+          <span class="rrp-badge ${t.side}">${t.side}</span>
+          ${t.result ? `<span class="rrp-badge ${t.result}">${t.result}</span>` : ''}
+          <div class="rrp-time">• ${fmtDT(t.setup_date||'')}</div>
+        </div>
+
+        <div class="rrp-row">
+          <div>
+            <div class="rrp-thumb">
+              ${ imgBefore
+                  ? `<img loading="lazy" src="${imgBefore}" alt="Sebelum">`
+                  : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}
+            </div>
+            <div class="rrp-cap">Sebelum — (placeholder/chart atau gambar sebelum)</div>
+          </div>
+          <div>
+            <div class="rrp-thumb">
+              ${ imgAfter
+                  ? `<img loading="lazy" src="${imgAfter}" alt="Sesudah">`
+                  : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}
+            </div>
+            <div class="rrp-cap">Sesudah — (placeholder/chart atau gambar sesudah)</div>
+          </div>
+        </div>
+
+        <div class="rrp-flex" style="margin-top:12px">
+          <div class="rrp-grow">
+            <table class="rrp-meta">
+              <tr><td class="rrp-k">Entry</td><td class="rrp-v">${price(entry)}</td><td class="rrp-k">TP1 (harga)</td><td class="rrp-v">${price(tp1)}</td><td class="rrp-k">R1</td><td class="rrp-v ${r1===0?'':(r1>0?'rrp-pos':'rrp-neg')}">${r1}</td></tr>
+              <tr><td class="rrp-k">Stop Loss</td><td class="rrp-v">${price(sl)}</td><td class="rrp-k">TP2 (harga)</td><td class="rrp-v">${price(tp2)}</td><td class="rrp-k">R2</td><td class="rrp-v ${r2===0?'':(r2>0?'rrp-pos':'rrp-neg')}">${r2}</td></tr>
+              <tr><td class="rrp-k">Δ (Entry–SL)</td><td class="rrp-v">${price(d)}</td><td class="rrp-k">TP3 (harga)</td><td class="rrp-v">${price(tp3)}</td><td class="rrp-k">R3</td><td class="rrp-v ${r3===0?'':(r3>0?'rrp-pos':'rrp-neg')}">${r3}</td></tr>
+              <tr><td class="rrp-k">R (Net)</td><td class="rrp-v ${signClass(rnet)}">${rnet}</td><td class="rrp-k">Equity (sim)</td><td class="rrp-v">$${fmt(runEq)}</td><td class="rrp-k">P/L (sim)</td><td class="rrp-v ${signClass(runPnlUSD)}">${runPnlUSD>=0?'+':''}$${fmt(runPnlUSD)}</td></tr>
+            </table>
+          </div>
+          <div class="rrp-eval rrp-grow">
+            <div class="rrp-k" style="margin-bottom:6px">Evaluasi</div>
+            <div>${(t.note||'—').replace(/\n/g,'<br>')}</div>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // FAB auto up/down (tetap di file export)
+  const fab = `
+    <button id="rrp-fab" aria-label="Scroll" title="Scroll">
+      <svg id="rrp-fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+    </button>
+    <script>
+      (function(){
+        var btn=document.getElementById('rrp-fab'), icon=document.getElementById('rrp-fabIcon');
+        function hasOverflow(){ return document.body.scrollHeight > innerHeight + 8; }
+        function nearTop(){ return scrollY < 100; }
+        function setIcon(d){ icon.innerHTML=(d==='down')?'<path d="M12 5v14M19 12l-7 7-7-7"/>':'<path d="M12 19V5M5 12l7-7 7 7"/>'; btn.title=(d==='down')?'Ke bawah':'Ke atas'; }
+        function update(){ if(!hasOverflow()){btn.style.display='none';return;} btn.style.display='flex';
+          if(nearTop()){ setIcon('down'); btn.onclick=function(){ scrollTo({top:document.body.scrollHeight,behavior:'smooth'}) } }
+          else{ setIcon('up'); btn.onclick=function(){ scrollTo({top:0,behavior:'smooth'}) } } }
+        addEventListener('scroll',update,{passive:true}); addEventListener('resize',update); document.addEventListener('DOMContentLoaded',update); update();
+      })();
+    </script>
+  `;
+
+  // === HTML hasil export, semuanya namespaced ===
   return `<!doctype html>
   <html lang="id">
   <head>
@@ -1412,18 +1584,145 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     <style>${css}</style>
   </head>
   <body>
-    <div class="wrap">
-      ${header}
-      ${tradeCards || ''}
-      </div><!-- /report-main -->
-      <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
-      ${fab}
+    <div id="rrp-stage">
+      <div id="rrp-inner">
+        ${header}
+        ${tradeCards || ''}
+        <div class="rrp-wrap rrp-muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
+        ${fab}
+        <canvas id="rrp-annot"></canvas>
+        <div class="rrp-toolbar">
+          <button id="rrp-toggle">Pensil: OFF</button>
+          <label>Warna <input id="rrp-color" type="color" value="#22d3ee"></label>
+          <label>Tebal <input id="rrp-size" type="range" min="1" max="16" value="3"></label>
+          <button id="rrp-undo">Undo</button>
+          <button id="rrp-clear">Clear</button>
+          <button id="rrp-save">Save PNG</button>
+        </div>
+      </div>
     </div>
 
-    ${lightbox}
+    <script>
+    (function(){
+      const stage = document.getElementById('rrp-stage');
+      const inner = document.getElementById('rrp-inner');
+      const wrap  = inner.querySelector('.rrp-wrap'); // pakai yang pertama untuk ukuran
+      const cvs   = document.getElementById('rrp-annot');
+      const ctx   = cvs.getContext('2d');
+
+      const btnToggle = document.getElementById('rrp-toggle');
+      const inpColor  = document.getElementById('rrp-color');
+      const inpSize   = document.getElementById('rrp-size');
+      const btnUndo   = document.getElementById('rrp-undo');
+      const btnClear  = document.getElementById('rrp-clear');
+      const btnSave   = document.getElementById('rrp-save');
+
+      let scale=1, tx=0, ty=0;
+      const MIN=0.5, MAX=5, STEP=0.1;
+      function apply(){ inner.style.transform = 'translate('+tx+'px,'+ty+'px) scale('+scale+')'; }
+
+      function fitCanvas(){
+        // untuk ukuran asli: reset transform sementara
+        const prev = inner.style.transform;
+        inner.style.transform = 'translate(0,0) scale(1)';
+        const w = wrap.offsetWidth;
+        const h = document.body.scrollHeight; // seluruh konten
+        inner.style.transform = prev;
+
+        const dpr = devicePixelRatio||1;
+        cvs.width = Math.round(w*dpr);
+        cvs.height= Math.round(h*dpr);
+        cvs.style.width  = w+'px';
+        cvs.style.height = h+'px';
+        cvs.style.left = 0; cvs.style.top = 0;
+        ctx.setTransform(dpr,0,0,dpr,0,0);
+      }
+
+      // koordinat pointer → koordinat canvas (kompensasi pan+zoom)
+      function toCanvasPoint(cx,cy){
+        const r = inner.getBoundingClientRect();
+        const x = (cx - r.left) / scale;
+        const y = (cy - r.top)  / scale;
+        return {x, y};
+      }
+
+      // ZOOM (wheel)
+      stage.addEventListener('wheel',(e)=>{
+        e.preventDefault();
+        const dir = e.deltaY<0 ? 1 : -1;
+        const old = scale;
+        const next = Math.min(MAX, Math.max(MIN, scale + dir*STEP));
+        if(next===scale) return;
+
+        const rect = stage.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        const dx = (cx - tx) / old;
+        const dy = (cy - ty) / old;
+        tx = cx - dx*next;
+        ty = cy - dy*next;
+        scale = next;
+        apply();
+      }, {passive:false});
+
+      // PAN (drag dengan tombol tengah, atau spasi + klik kiri)
+      let panning=false, space=false, sx=0, sy=0, stx=0, sty=0;
+      addEventListener('keydown', e=>{ if(e.code==='Space') space=true; });
+      addEventListener('keyup',   e=>{ if(e.code==='Space') space=false; });
+      stage.addEventListener('pointerdown', e=>{
+        if(e.button===1 || (space && e.button===0)){
+          panning=true; sx=e.clientX; sy=e.clientY; stx=tx; sty=ty; stage.setPointerCapture(e.pointerId);
+        }
+      });
+      stage.addEventListener('pointermove', e=>{
+        if(!panning) return;
+        tx = stx + (e.clientX - sx);
+        ty = sty + (e.clientY - sy);
+        apply();
+      });
+      ['pointerup','pointerleave','pointercancel'].forEach(ev=> stage.addEventListener(ev,()=>{panning=false;}));
+
+      // Gambar
+      let pencil=false, drawing=false, hist=[], MAXH=30;
+      function push(){ try{ if(hist.length>=MAXH) hist.shift(); hist.push(cvs.toDataURL('image/png')); }catch(_){} }
+      function start(x,y){ drawing=true; ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle=inpColor.value; ctx.lineWidth=+inpSize.value; ctx.beginPath(); ctx.moveTo(x,y); }
+      function move(x,y){ if(!drawing) return; ctx.lineTo(x,y); ctx.stroke(); }
+      function end(){ if(!drawing) return; drawing=false; ctx.closePath(); push(); }
+
+      cvs.addEventListener('pointerdown', e=>{
+        if(!pencil || e.button!==0) return;
+        const p = toCanvasPoint(e.clientX,e.clientY); start(p.x,p.y); cvs.setPointerCapture(e.pointerId);
+      });
+      cvs.addEventListener('pointermove', e=>{
+        if(!drawing) return;
+        const p = toCanvasPoint(e.clientX,e.clientY); move(p.x,p.y);
+      });
+      ['pointerup','pointerleave','pointercancel'].forEach(ev=> cvs.addEventListener(ev, end));
+
+      btnToggle.addEventListener('click', ()=>{
+        pencil=!pencil;
+        btnToggle.textContent='Pensil: '+(pencil?'ON':'OFF');
+        cvs.style.pointerEvents = pencil?'auto':'none';
+      });
+      btnUndo.addEventListener('click', ()=>{
+        if(!hist.length) return;
+        hist.pop();
+        const prev=hist[hist.length-1];
+        ctx.clearRect(0,0,cvs.width,cvs.height);
+        if(prev){ const img=new Image(); img.onload=()=>ctx.drawImage(img,0,0,cvs.width,cvs.height); img.src=prev; }
+      });
+      btnClear.addEventListener('click', ()=>{ ctx.clearRect(0,0,cvs.width,cvs.height); hist=[]; });
+      btnSave.addEventListener('click', ()=>{ const a=document.createElement('a'); a.download='annotation.png'; a.href=cvs.toDataURL('image/png'); a.click(); });
+
+      function init(){ scale=1; tx=0; ty=0; apply(); fitCanvas(); cvs.style.pointerEvents='none'; }
+      addEventListener('resize', fitCanvas);
+      init();
+    })();
+    </script>
   </body>
   </html>`;
 }
+
 
 /* =====================================================
    Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
