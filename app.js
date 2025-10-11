@@ -1140,28 +1140,32 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     body{background:#fff;color:#000}
     .wrap{max-width:100%;padding:0 16px}
     .card,.block,.thumb,.eval{background:#fff;border-color:#ddd}
-    #toTop{display:none !important}
+    #fabScroll{display:none !important}
   }
 
-  /* === SCROLL + STICKY HEADER + SHADOW === */
+  /* === SCROLL + STICKY HEADER === */
   html,body{height:100%}
   body{overflow-y:auto}
   .report-header{
     position: sticky; top:0; z-index:50;
-    background: rgba(15,23,42,.96);   /* lebih solid */
+    background: rgba(15,23,42,.96);
     backdrop-filter: blur(6px);
     border-bottom: 1px solid rgba(255,255,255,.08);
-    box-shadow: 0 6px 20px rgba(0,0,0,.25); /* shadow halus */
+    box-shadow: 0 6px 20px rgba(0,0,0,.25);
   }
   .report-main{ padding-top:12px }
 
-  /* tombol back to top */
-  #toTop{
-    position:fixed;right:16px;bottom:16px;display:none;
-    padding:.55rem .8rem;border-radius:10px;border:1px solid var(--ring);
-    background:#0b1628;color:#e5f0ff;cursor:pointer
+  /* FAB auto up/down */
+  #fabScroll{
+    position:fixed; right:16px; bottom:16px; display:none;
+    width:44px; height:44px; border-radius:9999px;
+    background:#0b1628; color:#e5f0ff; border:1px solid var(--ring);
+    box-shadow:0 8px 24px rgba(0,0,0,.35);
+    cursor:pointer; outline:0; display:flex; align-items:center; justify-content:center;
   }
-  #toTop:hover{filter:brightness(1.15)}
+  #fabScroll:hover{ filter:brightness(1.12) }
+  #fabScroll:active{ transform:translateY(1px) }
+  #fabScroll svg{ width:18px; height:18px }
   `;
 
   const fmt  = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -1171,6 +1175,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   const win  = stats.results?.wins ?? 0;
   const loss = stats.results?.counts?.SL ?? 0;
 
+  // ===== HEADER (sticky) + buka konten =====
   const header = `
     <div class="report-header">
       <div>
@@ -1188,11 +1193,11 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     <div class="report-main">
   `;
 
-  // running P/L & Equity
+  // running P/L & equity
   const oneR = stats.sim.oneR;
   let runR = 0, runPnlUSD = 0, runEq = stats.sim.base;
 
-  // cards per trade dengan lazy-load gambar
+  // konten per trade (sesuai pola kamu)
   const tradeCards = (trades||[]).map(t=>{
     const sym  = normalizeSymbol(t.symbol);
     const prec = precisionForSymbol(sym);
@@ -1284,22 +1289,49 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     `;
   }).join('');
 
-  // tombol back-to-top + script kecil
-  const toTopBtn = `
-    <button id="toTop" title="Kembali ke atas">↑ Top</button>
+  // 1 tombol FAB auto (atas/bawah)
+  const fab = `
+    <button id="fabScroll" aria-label="Scroll" title="Scroll">
+      <svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
     <script>
       (function(){
-        var t=document.getElementById('toTop');
-        window.addEventListener('scroll',function(){
-          t.style.display = (window.scrollY>400)?'block':'none';
-        });
-        t.addEventListener('click',function(){
-          window.scrollTo({top:0,behavior:'smooth'});
-        });
+        var btn  = document.getElementById('fabScroll');
+        var icon = document.getElementById('fabIcon');
+
+        function hasOverflow(){ return document.body.scrollHeight > window.innerHeight + 8; }
+        function nearTop(){ return window.scrollY < 100; }
+
+        function setIcon(dir){ // 'up' | 'down'
+          icon.innerHTML = (dir==='down')
+            ? '<path d="M12 5v14M19 12l-7 7-7-7"/>'
+            : '<path d="M12 19V5M5 12l7-7 7 7"/>';
+          btn.title = (dir==='down') ? 'Ke bagian bawah' : 'Kembali ke atas';
+        }
+
+        function updateFab(){
+          if(!hasOverflow()){ btn.style.display='none'; return; }
+          btn.style.display='flex';
+          if(nearTop()){
+            setIcon('down');
+            btn.onclick = function(){ window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); };
+          }else{
+            setIcon('up');
+            btn.onclick = function(){ window.scrollTo({top:0, behavior:'smooth'}); };
+          }
+        }
+
+        window.addEventListener('scroll',updateFab,{passive:true});
+        window.addEventListener('resize',updateFab);
+        document.addEventListener('DOMContentLoaded',updateFab);
+        updateFab();
       })();
     </script>
   `;
 
+  // ==== RETURN HTML ====
   return `<!doctype html>
   <html lang="id">
   <head>
@@ -1314,11 +1346,12 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
       ${tradeCards || ''}
       </div><!-- /report-main -->
       <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
-      ${toTopBtn}
+      ${fab}
     </div>
   </body>
   </html>`;
 }
+
 
 /* =====================================================
    Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
