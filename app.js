@@ -1153,7 +1153,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   #fabScroll:active{ transform:translateY(1px) }
   #fabScroll svg{ width:18px; height:18px }
 
-  /* Lightbox export + zoom & pan */
+  /* Lightbox export + zoom & pan + annotate */
   #lb{position:fixed; inset:0; background:rgba(0,0,0,.8); display:none; align-items:center; justify-content:center; z-index:100}
   #lb.open{display:flex}
   #lb .close{position:absolute; top:14px; right:14px; background:#111827; color:#fff; border:1px solid var(--ring); padding:6px 10px; border-radius:10px; cursor:pointer}
@@ -1164,11 +1164,36 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     background:#000; box-shadow:0 20px 60px rgba(0,0,0,.55);
     display:flex; align-items:center; justify-content:center;
   }
-  #lbImg{
-    display:block; max-width:none; max-height:none;
-    user-select:none; -webkit-user-drag:none;
-    transform-origin:center center; cursor:zoom-in;
-    will-change: transform;
+
+  /* viewport (img + canvas) di-transform bareng */
+  #azViewport{ position:relative; transform-origin:0 0; cursor:grab; }
+  #azViewport.drag{ cursor:grabbing; }
+  #lbImg, #lbCanvas{ position:absolute; top:0; left:0; user-select:none; -webkit-user-drag:none; }
+  #lbImg{ display:block; max-width:none; max-height:none; }
+  #lbCanvas{ pointer-events:none; } /* aktif saat menggambar saja (di JS) */
+
+  /* toolbar annotate */
+  .az-bar{
+    position:absolute; top:12px; left:12px; z-index:5;
+    display:flex; align-items:center; gap:8px;
+    background:rgba(2,6,23,.8); border:1px solid #1f2937;
+    backdrop-filter: blur(6px);
+    padding:8px; border-radius:10px;
+    color:#cbd5e1; font:12px/1.2 Inter, system-ui;
+  }
+  .az-btn{
+    border:1px solid #334155; background:#0b1220; color:#e2e8f0;
+    padding:6px 8px; border-radius:8px; font-weight:600; font-size:12px;
+  }
+  .az-btn.on{ background:#0ea5e9; border-color:#7dd3fc; color:#0b1220; }
+  .az-swatch{ width:28px; height:28px; border-radius:8px; border:1px solid #334155; overflow:hidden; display:flex; }
+  .az-swatch input{ width:100%; height:100%; border:0; padding:0; background:transparent; }
+  .az-range{ accent-color:#0ea5e9; width:90px; }
+
+  .az-hint{
+    position:absolute; bottom:10px; left:12px; z-index:5; padding:4px 8px;
+    font:11px/1 Inter, system-ui; color:#94a3b8; background:rgba(2,6,23,.6);
+    border:1px solid #1e293b; border-radius:8px;
   }
 
   @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
@@ -1327,77 +1352,225 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     </script>
   `;
 
-  // ===== Lightbox (zoom + pan) =====
+  // ===== Lightbox (zoom + pan + annotate) =====
   const lightbox = `
     <div id="lb" aria-modal="true" role="dialog">
       <button class="close" aria-label="Tutup">Tutup</button>
       <div id="lbInner">
-        <img id="lbImg" alt="">
+        <div id="azViewport">
+          <img id="lbImg" alt="">
+          <canvas id="lbCanvas"></canvas>
+        </div>
+
+        <div class="az-bar" id="azBar">
+          <button class="az-btn" data-tool="pen" title="Pensil (P)">Pen</button>
+          <button class="az-btn" data-tool="eraser" title="Penghapus (E)">Eraser</button>
+          <span class="az-swatch"><input type="color" id="azColor" value="#ff4757" title="Warna"></span>
+          <input type="range" id="azSize" min="1" max="24" value="3" class="az-range" title="Tebal">
+          <button class="az-btn" data-act="undo" title="Undo (Ctrl+Z)">Undo</button>
+          <button class="az-btn" data-act="clear" title="Hapus">Clear</button>
+          <button class="az-btn" data-act="save" title="Simpan PNG">Save PNG</button>
+        </div>
+
+        <div class="az-hint">Zoom: scroll • Pan: drag saat zoom&gt;1 • Gambar: tarik mouse</div>
       </div>
     </div>
     <script>
       (function(){
         var lb = document.getElementById('lb');
-        var img = document.getElementById('lbImg');
         var inner = document.getElementById('lbInner');
         var btnClose = lb.querySelector('.close');
 
-        var baseScale = 1, scale = 1, MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
-        var tx = 0, ty = 0, startX=0, startY=0, startTx=0, startTy=0, dragging=false;
+        var viewport = document.getElementById('azViewport');
+        var img = document.getElementById('lbImg');
+        var canvas = document.getElementById('lbCanvas');
+        var ctx = canvas.getContext('2d');
 
-        function apply(){ img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (baseScale * scale) + ')';
-          img.style.cursor = dragging ? 'grabbing' : (scale > 1 ? 'grab' : 'zoom-in'); }
-        function reset(){ scale=1; tx=0; ty=0; apply(); }
-        function fitBase(){
-          var cw=inner.clientWidth, ch=inner.clientHeight;
-          var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height;
-          baseScale = (!nw||!nh||!cw||!ch) ? 1 : Math.min(cw/nw, ch/nh);
-          img.style.width = nw + 'px'; img.style.height='auto';
+        // state zoom/pan
+        var scale = 1, MIN_Z = 1, MAX_Z = 6;
+        var tx = 0, ty = 0, panning=false, sx=0, sy=0, stx=0, sty=0;
+
+        // state draw
+        var tool='pen', color='#ff4757', size=3, drawing=false, lastX=0, lastY=0, strokes=[];
+
+        function applyTransform(){
+          viewport.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
         }
-        function clamp(){
+        function setTool(t){
+          tool=t;
+          document.querySelectorAll('#azBar .az-btn[data-tool]').forEach(b=>b.classList.toggle('on', b.getAttribute('data-tool')===t));
+          // aktifkan pointer untuk kanvas saat menggambar
+          canvas.style.pointerEvents = (t==='pen' || t==='eraser') ? 'auto' : 'none';
+        }
+        function fitBase(){
+          // ukuran asli gambar
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          img.style.width = w + 'px';
+          img.style.height = h + 'px';
+          canvas.width = w; canvas.height = h;
+          canvas.style.width = w + 'px';
+          canvas.style.height = h + 'px';
+          // reset transform
+          scale=1; tx=0; ty=0; applyTransform();
+          // bersihkan coretan saat buka gambar baru
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          strokes.length = 0;
+        }
+        function clampPan(){
           var cw=inner.clientWidth, ch=inner.clientHeight;
-          var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height;
-          var sw=nw*baseScale*scale, sh=nh*baseScale*scale;
-          var mx=Math.max(0,(sw-cw)/2), my=Math.max(0,(sh-ch)/2);
+          var w = canvas.width  * scale;
+          var h = canvas.height * scale;
+          var mx = Math.max(0,(w-cw)/2), my = Math.max(0,(h-ch)/2);
           if (tx> mx) tx= mx; if (tx<-mx) tx=-mx;
           if (ty> my) ty= my; if (ty<-my) ty=-my;
         }
         function openFrom(el){
-          img.onload=function(){ fitBase(); reset(); };
+          img.onload=function(){ fitBase(); };
           img.src = el.getAttribute('src')||''; lb.classList.add('open');
         }
         function hide(){ lb.classList.remove('open'); img.src=''; }
 
+        // buka saat klik gambar
         document.addEventListener('click',function(e){
-          var t=e.target; if(t && t.classList && t.classList.contains('zoomable')) openFrom(t);
+          var t=e.target;
+          if(t && t.classList && t.classList.contains('zoomable')) openFrom(t);
         });
+
+        // tutup
         lb.addEventListener('click', function(e){ if(e.target===lb) hide(); });
         btnClose.addEventListener('click', hide);
-        document.addEventListener('keydown', function(e){ if(e.key==='Escape') hide(); });
+        document.addEventListener('keydown', function(e){
+          if(e.key==='Escape') hide();
+          if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
+          if(e.key==='p'||e.key==='P') setTool('pen');
+          if(e.key==='e'||e.key==='E') setTool('eraser');
+        });
 
+        // wheel zoom (fokus sekitar kursor)
         function onWheel(e){
           e.preventDefault();
-          var dir=(e.deltaY<0)?1:-1, next=Math.min(MAX_Z,Math.max(MIN_Z, scale+dir*STEP));
-          if(next!==scale){ scale=next; clamp(); apply(); }
+          var rect = viewport.getBoundingClientRect();
+          var cx = (e.clientX - rect.left - tx)/scale;
+          var cy = (e.clientY - rect.top  - ty)/scale;
+
+          var next = Math.max(MIN_Z, Math.min(MAX_Z, scale * (1 + (-Math.sign(e.deltaY))*0.12)));
+          if (next === scale) return;
+          // sesuaikan pan agar titik fokus tetap
+          tx = e.clientX - rect.left - cx * next;
+          ty = e.clientY - rect.top  - cy * next;
+          scale = next; clampPan(); applyTransform();
         }
         inner.addEventListener('wheel', onWheel, {passive:false});
-        img.addEventListener('wheel',   onWheel, {passive:false});
 
+        // pan via drag (saat zoom>1)
         function canPan(){ return scale>1; }
-        function down(x,y){ if(!canPan()) return; dragging=true; startX=x; startY=y; startTx=tx; startTy=ty; document.body.style.userSelect='none'; apply(); }
-        function move(x,y){ if(!dragging) return; tx=startTx+(x-startX); ty=startTy+(y-startY); clamp(); apply(); }
-        function up(){ if(!dragging) return; dragging=false; document.body.style.userSelect=''; apply(); }
+        inner.addEventListener('mousedown', function(e){
+          if (!canPan()) return;
+          panning=true; viewport.classList.add('drag');
+          sx=e.clientX; sy=e.clientY; stx=tx; sty=ty;
+        });
+        document.addEventListener('mousemove', function(e){
+          if(!panning) return; tx = stx + (e.clientX-sx); ty = sty + (e.clientY-sy); clampPan(); applyTransform();
+        });
+        document.addEventListener('mouseup', function(){ if(panning){ panning=false; viewport.classList.remove('drag'); }});
 
-        inner.addEventListener('mousedown', function(e){ down(e.clientX,e.clientY); });
-        document.addEventListener('mousemove', function(e){ move(e.clientX,e.clientY); });
-        document.addEventListener('mouseup', up);
+        // ===== menggambar di canvas (koordinat mengikuti transform) =====
+        function toCanvasXY(clientX, clientY){
+          var rect = viewport.getBoundingClientRect();
+          var x = (clientX - rect.left - tx)/scale;
+          var y = (clientY - rect.top  - ty)/scale;
+          // clamp
+          if (x<0) x=0; if (y<0) y=0;
+          if (x>canvas.width) x=canvas.width;
+          if (y>canvas.height) y=canvas.height;
+          return {x,y};
+        }
 
-        inner.addEventListener('touchstart', function(e){ if(e.touches.length!==1) return; var t=e.touches[0]; down(t.clientX,t.clientY); }, {passive:true});
-        inner.addEventListener('touchmove', function(e){ if(!dragging||e.touches.length!==1) return; var t=e.touches[0]; move(t.clientX,t.clientY); }, {passive:true});
-        inner.addEventListener('touchend', up);
-        inner.addEventListener('touchcancel', up);
+        canvas.addEventListener('mousedown', function(e){
+          drawing=true;
+          var p = toCanvasXY(e.clientX, e.clientY);
+          lastX=p.x; lastY=p.y;
 
-        addEventListener('resize', function(){ if(!lb.classList.contains('open')) return; fitBase(); clamp(); apply(); });
+          ctx.save();
+          ctx.globalCompositeOperation = (tool==='eraser') ? 'destination-out' : 'source-over';
+          ctx.strokeStyle = color;
+          ctx.lineWidth = size;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+
+          strokes.push({type:tool, color, size, path:[[p.x,p.y]]});
+        });
+        document.addEventListener('mousemove', function(e){
+          if(!drawing) return;
+          var p = toCanvasXY(e.clientX, e.clientY);
+          ctx.lineTo(p.x, p.y);
+          ctx.stroke();
+          strokes[strokes.length-1].path.push([p.x,p.y]);
+        });
+        document.addEventListener('mouseup', function(){
+          if(!drawing) return;
+          drawing=false; ctx.closePath(); ctx.restore();
+        });
+
+        // toolbar
+        document.querySelectorAll('#azBar .az-btn[data-tool]').forEach(btn=>{
+          btn.addEventListener('click', ()=> setTool(btn.getAttribute('data-tool')));
+        });
+        document.getElementById('azColor').addEventListener('input', e=>{ color=e.target.value; });
+        document.getElementById('azSize').addEventListener('input', e=>{ size=+e.target.value; });
+
+        document.querySelector('#azBar .az-btn[data-act="undo"]').addEventListener('click', undo);
+        document.querySelector('#azBar .az-btn[data-act="clear"]').addEventListener('click', function(){
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          strokes.push({type:'clear'});
+        });
+        document.querySelector('#azBar .az-btn[data-act="save"]').addEventListener('click', savePNG);
+
+        function undo(){
+          if(!strokes.length) return;
+          // redraw dari awal (stabil & simpel)
+          var hist = strokes.slice(0,-1);
+          ctx.clearRect(0,0,canvas.width,canvas.height);
+          hist.forEach(s=>{
+            if(s.type==='clear') return;
+            ctx.save();
+            ctx.globalCompositeOperation = (s.type==='eraser') ? 'destination-out' : 'source-over';
+            ctx.strokeStyle = s.color;
+            ctx.lineWidth = s.size;
+            ctx.lineCap='round'; ctx.lineJoin='round';
+            ctx.beginPath();
+            ctx.moveTo(s.path[0][0], s.path[0][1]);
+            for(var i=1;i<s.path.length;i++){ ctx.lineTo(s.path[i][0], s.path[i][1]); }
+            ctx.stroke(); ctx.closePath(); ctx.restore();
+          });
+          strokes = hist;
+        }
+
+        function savePNG(){
+          // merge image + canvas
+          var tmp = document.createElement('canvas');
+          tmp.width = canvas.width; tmp.height = canvas.height;
+          var tctx = tmp.getContext('2d');
+          tctx.drawImage(img, 0,0, tmp.width, tmp.height);
+          tctx.drawImage(canvas, 0,0);
+          var url = tmp.toDataURL('image/png');
+          var a = document.createElement('a');
+          a.href = url; a.download = (img.alt||'annotated') + '.png';
+          document.body.appendChild(a); a.click(); a.remove();
+        }
+
+        // responsive
+        addEventListener('resize', function(){
+          if(!lb.classList.contains('open')) return;
+          // tidak perlu ubah ukuran canvas (basis natural), cukup clamp pan
+          clampPan(); applyTransform();
+        });
+
+        // set default tool
+        setTool('pen');
       })();
     </script>
   `;
