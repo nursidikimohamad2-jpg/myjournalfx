@@ -38,6 +38,10 @@
       white-space: nowrap;
       width: 92px; /* sesuaikan dengan jumlah tombol */
     }
+
+    /* === Tambahan: Zoom-only untuk Lightbox (halaman utama) === */
+    #imgViewerInner { background:#000; }
+    #imgViewerImg   { transform-origin:center center; cursor:zoom-in; }
   </style>
 </head>
 <body class="min-h-screen bg-gradient-to-b from-slate-950 to-slate-900 text-slate-100">
@@ -336,7 +340,14 @@
   <!-- ===== Lightbox Viewer ===== -->
   <div id="imgViewer" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[60]">
     <button id="imgViewerClose" class="absolute top-4 right-4 bg-slate-800 text-white px-3 py-1 rounded-lg">Tutup</button>
-    <img id="imgViewerImg" src="" alt="Lampiran" class="max-w-[90vw] max-h-[85vh] rounded-xl shadow-2xl ring-1 ring-white/10">
+
+    <!-- container baru untuk support zoom -->
+    <div id="imgViewerInner" class="rounded-xl shadow-2xl ring-1 ring-white/10 overflow-hidden"
+         style="max-width:90vw; max-height:85vh; background:#000;">
+      <img id="imgViewerImg" src="" alt="Lampiran"
+           class="block select-none"
+           style="transform-origin:center center; cursor:zoom-in;">
+    </div>
   </div>
 
   <!-- ===== Modal Projects ===== -->
@@ -397,7 +408,7 @@
           if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) continue;
           const sizeMB = file.size / (1024 * 1024);
           if (sizeMB > MAX_MB) {
-            alert(\`Ukuran gambar terlalu besar (\${sizeMB.toFixed(2)} MB). Maksimal \${MAX_MB} MB\`);
+            alert(`Ukuran gambar terlalu besar (${sizeMB.toFixed(2)} MB). Maksimal ${MAX_MB} MB`);
             return;
           }
 
@@ -429,6 +440,56 @@
         }
       });
     });
+  })();
+  </script>
+
+  <!-- === Tambahan: Zoom pakai scroll untuk Lightbox halaman utama === -->
+  <script>
+  (function(){
+    var viewer   = document.getElementById('imgViewer');
+    var inner    = document.getElementById('imgViewerInner');
+    var img      = document.getElementById('imgViewerImg');
+    var btnClose = document.getElementById('imgViewerClose');
+
+    // state zoom sederhana
+    var scale = 1;
+    var MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
+
+    function applyZoom(){
+      img.style.transform = 'scale(' + scale + ')';
+      img.style.cursor = (scale > 1 ? 'zoom-out' : 'zoom-in');
+    }
+    function resetZoom(){
+      scale = 1;
+      applyZoom();
+    }
+
+    // zoom via scroll (wheel) di area gambar
+    inner.addEventListener('wheel', function(e){
+      if (viewer.classList.contains('hidden')) return; // lightbox tertutup
+      e.preventDefault(); // cegah scroll body
+      var dir  = e.deltaY < 0 ? 1 : -1;               // up = zoom in
+      var next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir * STEP));
+      if (next !== scale){ scale = next; applyZoom(); }
+    }, { passive:false });
+
+    // double-click untuk reset zoom
+    inner.addEventListener('dblclick', function(){
+      resetZoom();
+    });
+
+    // saat tombol Tutup diklik, reset zoom agar bersih
+    btnClose.addEventListener('click', function(){
+      resetZoom();
+    });
+
+    // opsional: tekan ESC juga reset (selain menutup via app.js)
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape') resetZoom();
+    });
+
+    // awal
+    resetZoom();
   })();
   </script>
 
