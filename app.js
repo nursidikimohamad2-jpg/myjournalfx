@@ -643,15 +643,86 @@ projectsList?.addEventListener('click', e=>{
     save(item.trades); refresh(); closeProjectsModal();
     setActiveProject(item.id, item.name);
     if(item.settings){ setSettings(item.settings); calcSim(); }
+    updateActiveProjectUI?.();              // ← TAMBAHAN: sinkron label tombol
   }else if(btn.dataset.act==='del'){
     if(confirm(`Hapus project "${item.name}"?`)){
       saveProj(projects.filter(p=>p.id!==id));
       const act = getActiveProject();
       if(act.id===id) setActiveProject('', '');
       renderProjects();
+      updateActiveProjectUI?.();            // ← TAMBAHAN: sembunyikan tombol saat tak ada project
     }
   }
-});
+});   // ← PASTIKAN tempel fungsi BARU di bawah penutup listener ini
+
+/* ============================================
+   SAVE JURNAL AKTIF → PROJECT AKTIF (APPEND/UPSERT)
+   ============================================ */
+function saveIntoActiveProject(){
+  // 1) Ambil project aktif
+  const act = getActiveProject?.() || { id:'', name:'' };
+  if (!act.id) { alert('Tidak ada project aktif. Buka Projects → Open.'); return; }
+
+  // 2) Ambil daftar projects & temukan yang aktif
+  const projects = loadProj?.() || [];
+  const item = projects.find(p => p.id === act.id);
+  if (!item) { alert('Project aktif tidak ditemukan.'); return; }
+
+  // 3) Ambil jurnal aktif & settings
+  const tradesActive = load?.() || [];
+  const settings     = getSettings?.() || {};
+
+  // 4) APPEND + UPSERT (id sama → update; id baru → tambah)
+  const before = Array.isArray(item.trades) ? item.trades : [];
+  const map    = new Map(before.map(r => [r.id, r]));
+  let added = 0, updated = 0;
+  for (const r of tradesActive) {
+    if (map.has(r.id)) {
+      const prev = map.get(r.id);
+      if (JSON.stringify(prev) !== JSON.stringify(r)) {
+        map.set(r.id, r); updated++;
+      }
+    } else {
+      map.set(r.id, r); added++;
+    }
+  }
+
+  // 5) Simpan balik (urutan lama dipertahankan; tambahan di akhir)
+  item.trades    = Array.from(map.values());
+  item.settings  = settings;
+  item.updatedAt = (typeof nowISO==='function') ? nowISO() : new Date().toISOString();
+  saveProj?.(projects);
+
+  // 6) Feedback di tombol
+  const btn = document.getElementById('saveToActiveBtn');
+  if (btn){
+    const old = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = `Tersimpan ✓ +${added}${updated?` / ↑${updated}`:''}`;
+    setTimeout(()=>{ btn.disabled = false; btn.textContent = old; }, 1000);
+  }
+
+  // 7) Refresh daftar project kalau modalnya terbuka
+  renderProjects?.();
+}
+
+/* Kaitkan tombol di HTML (id="saveToActiveBtn") ke fungsi di atas */
+document.getElementById('saveToActiveBtn')
+  ?.addEventListener('click', saveIntoActiveProject);
+
+/* Tampilkan/ubah label tombol sesuai project aktif */
+function updateActiveProjectUI(){
+  const act = getActiveProject?.() || { id:'', name:'' };
+  const btn = document.getElementById('saveToActiveBtn');
+  if (!btn) return;
+  if (act.id){
+    btn.classList.remove('hidden');
+    btn.textContent = `Simpan (Project ${act.name || 'Aktif'})`;
+  } else {
+    btn.classList.add('hidden');
+  }
+}
+document.addEventListener('DOMContentLoaded', ()=> updateActiveProjectUI?.());
 
 /* ===== Simulasi Balance ===== */
 function getSettings(){
