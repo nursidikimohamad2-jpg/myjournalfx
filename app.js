@@ -1141,6 +1141,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     .wrap{max-width:100%;padding:0 16px}
     .card,.block,.thumb,.eval{background:#fff;border-color:#ddd}
     #fabScroll{display:none !important}
+    #lb{display:none !important}
   }
 
   /* === SCROLL + STICKY HEADER === */
@@ -1166,6 +1167,26 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   #fabScroll:hover{ filter:brightness(1.12) }
   #fabScroll:active{ transform:translateY(1px) }
   #fabScroll svg{ width:18px; height:18px }
+
+  /* === Lightbox Preview === */
+  #lb{
+    position:fixed; inset:0; display:none; z-index:70;
+    background:rgba(0,0,0,.6); backdrop-filter: blur(4px);
+    align-items:center; justify-content:center;
+  }
+  #lb.open{ display:flex; }
+  #lb img{
+    max-width:92vw; max-height:92vh;
+    border-radius:12px; border:1px solid var(--ring);
+    box-shadow:0 16px 48px rgba(0,0,0,.5); background:#000;
+  }
+  #lb .close{
+    position:absolute; top:14px; right:14px;
+    width:40px; height:40px; border-radius:999px;
+    background:rgba(15,23,42,.8); color:#e2e8f0; border:1px solid var(--ring);
+    display:flex; align-items:center; justify-content:center; cursor:pointer;
+  }
+  #lb .close:hover{ filter:brightness(1.12); }
   `;
 
   const fmt  = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
@@ -1197,7 +1218,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   const oneR = stats.sim.oneR;
   let runR = 0, runPnlUSD = 0, runEq = stats.sim.base;
 
-  // konten per trade (sesuai pola kamu)
+  // konten per trade (ditambah class="zoomable" di <img>)
   const tradeCards = (trades||[]).map(t=>{
     const sym  = normalizeSymbol(t.symbol);
     const prec = precisionForSymbol(sym);
@@ -1231,7 +1252,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
             <div class="thumb">
               ${
                 imgBefore
-                ? `<img loading="lazy" src="${imgBefore}" alt="Sebelum">`
+                ? `<img loading="lazy" src="${imgBefore}" alt="Sebelum" class="zoomable">`
                 : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
                      <path d="M20,90 L140,130 L280,60 L420,170 L580,110"
                            fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
@@ -1244,7 +1265,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
             <div class="thumb">
               ${
                 imgAfter
-                ? `<img loading="lazy" src="${imgAfter}" alt="Sesudah">`
+                ? `<img loading="lazy" src="${imgAfter}" alt="Sesudah" class="zoomable">`
                 : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
                      <path d="M20,140 L210,150 L360,160 L580,110"
                            fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
@@ -1289,44 +1310,67 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     `;
   }).join('');
 
-  // 1 tombol FAB auto (atas/bawah)
-  const fab = `
+  // FAB 1 tombol auto (atas/bawah) + LIGHTBOX markup & script
+  const helpers = `
     <button id="fabScroll" aria-label="Scroll" title="Scroll">
       <svg id="fabIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M12 19V5M5 12l7-7 7 7"/>
       </svg>
     </button>
+
+    <div id="lb" aria-modal="true" role="dialog">
+      <button class="close" aria-label="Tutup">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+      <img id="lbImg" src="" alt="">
+    </div>
+
     <script>
+      // FAB auto up/down
       (function(){
         var btn  = document.getElementById('fabScroll');
         var icon = document.getElementById('fabIcon');
-
         function hasOverflow(){ return document.body.scrollHeight > window.innerHeight + 8; }
         function nearTop(){ return window.scrollY < 100; }
-
-        function setIcon(dir){ // 'up' | 'down'
+        function setIcon(dir){
           icon.innerHTML = (dir==='down')
             ? '<path d="M12 5v14M19 12l-7 7-7-7"/>'
             : '<path d="M12 19V5M5 12l7-7 7 7"/>';
           btn.title = (dir==='down') ? 'Ke bagian bawah' : 'Kembali ke atas';
         }
-
         function updateFab(){
           if(!hasOverflow()){ btn.style.display='none'; return; }
           btn.style.display='flex';
           if(nearTop()){
             setIcon('down');
-            btn.onclick = function(){ window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'}); };
+            btn.onclick = ()=>window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
           }else{
             setIcon('up');
-            btn.onclick = function(){ window.scrollTo({top:0, behavior:'smooth'}); };
+            btn.onclick = ()=>window.scrollTo({top:0, behavior:'smooth'});
           }
         }
-
         window.addEventListener('scroll',updateFab,{passive:true});
         window.addEventListener('resize',updateFab);
         document.addEventListener('DOMContentLoaded',updateFab);
         updateFab();
+      })();
+
+      // Lightbox preview
+      (function(){
+        var lb = document.getElementById('lb');
+        var img = document.getElementById('lbImg');
+        var closeBtn = lb.querySelector('.close');
+        function open(src){ img.src = src; lb.classList.add('open'); }
+        function hide(){ lb.classList.remove('open'); img.src=''; }
+        document.addEventListener('click', function(e){
+          var t = e.target;
+          if (t && t.classList && t.classList.contains('zoomable')) { open(t.src); }
+        });
+        lb.addEventListener('click', function(e){ if (e.target === lb) hide(); });
+        closeBtn.addEventListener('click', hide);
+        document.addEventListener('keydown', function(e){ if (e.key === 'Escape') hide(); });
       })();
     </script>
   `;
@@ -1346,7 +1390,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
       ${tradeCards || ''}
       </div><!-- /report-main -->
       <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
-      ${fab}
+      ${helpers}
     </div>
   </body>
   </html>`;
