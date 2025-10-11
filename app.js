@@ -328,6 +328,8 @@ function refresh(){
 
 /* ===== CRUD data ===== */
 
+/* ===== CRUD data ===== */
+
 // Helper: panggil fungsi render yang tersedia di proyekmu
 function redraw(){
   if (typeof refresh === 'function') {
@@ -393,7 +395,6 @@ function deleteTrade(id){
     setTimeout(() => { tbl.scrollTop = prevTop; }, 60);
   }
 }
-
 
 
 function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
