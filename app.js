@@ -1133,44 +1133,49 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   .right{text-align:right}
   .sep{height:1px;background:var(--ring);margin:10px 0}
 
-  @media (max-width:900px){
-    .row{grid-template-columns:1fr}
-    .cards{grid-template-columns:repeat(2,1fr)}
-  }
+  @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
+
+  /* Print rapi */
   @media print{
     body{background:#fff;color:#000}
+    .wrap{max-width:100%;padding:0 16px}
     .card,.block,.thumb,.eval{background:#fff;border-color:#ddd}
+    #toTop{display:none !important}
   }
 
-  /* === SCROLL + STICKY HEADER (PRESENTASI) === */
+  /* === SCROLL + STICKY HEADER + SHADOW === */
   html,body{height:100%}
-  body{overflow-y:auto}                 /* pastikan file export bisa discroll */
+  body{overflow-y:auto}
   .report-header{
     position: sticky; top:0; z-index:50;
-    background: rgba(15,23,42,.92);
+    background: rgba(15,23,42,.96);   /* lebih solid */
     backdrop-filter: blur(6px);
     border-bottom: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 6px 20px rgba(0,0,0,.25); /* shadow halus */
   }
   .report-main{ padding-top:12px }
-  @media print{
-    .report-header{ position:static; backdrop-filter:none; background:transparent }
-    .report-main{ padding-top:0 }
+
+  /* tombol back to top */
+  #toTop{
+    position:fixed;right:16px;bottom:16px;display:none;
+    padding:.55rem .8rem;border-radius:10px;border:1px solid var(--ring);
+    background:#0b1628;color:#e5f0ff;cursor:pointer
   }
+  #toTop:hover{filter:brightness(1.15)}
   `;
 
-  const fmt = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
+  const fmt  = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
   const fmt0 = n => (+n).toLocaleString('id-ID',{maximumFractionDigits:0});
   const signClass = n => n>=0 ? 'pos' : 'neg';
 
-  const win  = stats.results.wins;
-  const loss = stats.results.counts.SL;
+  const win  = stats.results?.wins ?? 0;
+  const loss = stats.results?.counts?.SL ?? 0;
 
-  // ===== HEADER DIKUNCI + buka konten utama =====
   const header = `
     <div class="report-header">
       <div>
         <h1>${projectName}</h1>
-        <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
+        <div class="muted">Rentang: ${stats.range?.min||'-'} — ${stats.range?.max||'-'} • Disusun otomatis dari RR Journal</div>
       </div>
       <div class="cards">
         <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
@@ -1180,17 +1185,14 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
         <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
       </div>
     </div>
-
     <div class="report-main">
   `;
 
-  // ===== Running P/L & Equity (sesuai skripmu) =====
+  // running P/L & Equity
   const oneR = stats.sim.oneR;
-  let runR = 0;
-  let runPnlUSD = 0;
-  let runEq = stats.sim.base;
+  let runR = 0, runPnlUSD = 0, runEq = stats.sim.base;
 
-  // ===== Kartu per-trade (mengikuti skripmu) =====
+  // cards per trade dengan lazy-load gambar
   const tradeCards = (trades||[]).map(t=>{
     const sym  = normalizeSymbol(t.symbol);
     const prec = precisionForSymbol(sym);
@@ -1204,14 +1206,10 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     const [r1,r2,r3] = rByResult(t.result||'');
     const rnet = netROf(t.result||'');
 
-    // update running
-    runR += rnet;
-    runPnlUSD = runR * oneR;
-    runEq = stats.sim.base + runPnlUSD;
+    runR += rnet; runPnlUSD = runR * oneR; runEq = stats.sim.base + runPnlUSD;
 
     const imgBefore = t.img_before_data || '';
     const imgAfter  = t.img_after_data  || '';
-
     const price = v => toFixedBy(v, prec);
 
     return `
@@ -1228,7 +1226,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
             <div class="thumb">
               ${
                 imgBefore
-                ? `<img src="${imgBefore}" alt="Sebelum">`
+                ? `<img loading="lazy" src="${imgBefore}" alt="Sebelum">`
                 : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
                      <path d="M20,90 L140,130 L280,60 L420,170 L580,110"
                            fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
@@ -1241,7 +1239,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
             <div class="thumb">
               ${
                 imgAfter
-                ? `<img src="${imgAfter}" alt="Sesudah">`
+                ? `<img loading="lazy" src="${imgAfter}" alt="Sesudah">`
                 : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
                      <path d="M20,140 L210,150 L360,160 L580,110"
                            fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
@@ -1286,7 +1284,22 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     `;
   }).join('');
 
-  // ===== RETURN: tutup report-main sebelum footer/info dibuat =====
+  // tombol back-to-top + script kecil
+  const toTopBtn = `
+    <button id="toTop" title="Kembali ke atas">↑ Top</button>
+    <script>
+      (function(){
+        var t=document.getElementById('toTop');
+        window.addEventListener('scroll',function(){
+          t.style.display = (window.scrollY>400)?'block':'none';
+        });
+        t.addEventListener('click',function(){
+          window.scrollTo({top:0,behavior:'smooth'});
+        });
+      })();
+    </script>
+  `;
+
   return `<!doctype html>
   <html lang="id">
   <head>
@@ -1301,6 +1314,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
       ${tradeCards || ''}
       </div><!-- /report-main -->
       <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
+      ${toTopBtn}
     </div>
   </body>
   </html>`;
