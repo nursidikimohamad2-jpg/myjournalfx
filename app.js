@@ -1173,6 +1173,34 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
   @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
   @media print{ body{background:#fff;color:#000} .wrap{max-width:100%;padding:0 16px} .card,.block,.thumb,.eval{background:#fff;border-color:#ddd} #fabScroll{display:none !important} }
+
+  /* === Annotation Canvas (presentasi) === */
+  .annot-toolbar{
+    position: fixed; right: 18px; top: 18px; z-index: 120;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(15,23,42,.92);
+    border: 1px solid rgba(255,255,255,.08);
+    border-radius: 12px; padding: 8px 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.35);
+  }
+  .annot-toolbar *{ font: 12px system-ui, Inter, Segoe UI, Roboto }
+  .annot-toolbar label{ color:#9fb1c5 }
+  .annot-toolbar input[type="color"]{ width: 30px; height: 22px; padding:0; border:none; background:transparent; }
+  .annot-toolbar button{
+    background:#0b1628; color:#e5f0ff; border:1px solid rgba(255,255,255,.15);
+    border-radius: 8px; padding:6px 10px; cursor: pointer;
+  }
+  .annot-toolbar button:hover{ filter:brightness(1.12) }
+  #annotCanvas{
+    position: fixed; inset: 0; z-index: 110; display: none;
+    pointer-events: none;
+  }
+  #annotCanvas.on{
+    display:block; pointer-events: auto;
+  }
+  @media print{
+    .annot-toolbar, #annotCanvas{ display:none !important; }
+  }
   `;
 
   const fmt  = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
