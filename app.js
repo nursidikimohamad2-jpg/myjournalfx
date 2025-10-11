@@ -296,6 +296,8 @@ function rowHTML(t){
 /* ===== refresh UI + prob & sim ===== */
 function refresh(){
   const data = load();
+   data.sort((a,b)=> new Date(a.setup_date) - new Date(b.setup_date));
+
   tradeList.innerHTML = '';
   totalTxBox.textContent = String(data.length);
 
