@@ -330,17 +330,6 @@ function addTrade(obj){
   data.push(obj);     // ← sudah benar
   save(data);
 }
-function scrollTradesToBottom(behavior = 'smooth'){
-  const scroller =
-    document.getElementById('tradeScroll') ||
-    document.querySelector('.table-scroll') ||
-    document.getElementById('tradeList')?.parentElement;
-
-  if (!scroller) return;
-  requestAnimationFrame(()=>{
-    scroller.scrollTo({ top: scroller.scrollHeight, behavior });
-  });
-}
 
 
 // === RENDER TABEL (urut lama → baru; entry baru di bawah) ===
@@ -348,11 +337,36 @@ function renderTrades(){
   const tbody = document.getElementById('tradeList');
   if (!tbody) return;
   tbody.innerHTML = '';
+
+  // Ambil data dari storage versi kamu
+  const rows = load().slice().sort((a,b)=>{
+    const da = new Date(a?.setup_date || a?.createdAt || 0);
+    const db = new Date(b?.setup_date || b?.createdAt || 0);
+    if (!isNaN(da) && !isNaN(db)) return da - db;
+    const ia = (a?.id || '').toString();
+    const ib = (b?.id || '').toString();
+    return ia.localeCompare(ib);
+  });
+
+  for (const t of rows){
+    const tr = (typeof buildTradeRow === 'function')
+      ? buildTradeRow(t)
+      : document.createElement('tr'); // fallback aman
+    tbody.appendChild(tr); // → baris baru selalu di bawah
+  }
+
+  // opsional: panggil kalkulasi jika ada
   if (typeof updateTotals === 'function') updateTotals(rows);
   if (typeof updateProbabilities === 'function') updateProbabilities(rows);
   if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
-+ scrollTradesToBottom('smooth');
 }
+
+/* ===== edit modal ===== */
+function openEdit(id){
+  const t = load().find(x=>x.id===id); if(!t) return;
+  ensureSymbolDropdownForEdit();
+data.sort((a,b)=> new Date(a.setup_date) - new Date(b.setup_date));
+nebgapa fungsi setetlah isi data tidak langsung scrol kebawah
 
   // Ambil data dari storage versi kamu
   const rows = load().slice().sort((a,b)=>{
