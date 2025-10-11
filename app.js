@@ -324,48 +324,37 @@ function refresh(){
   calcSim(rnet); // update simulasi balance
 }
 
-/* =========================
-   RR JOURNAL — Tabel + Scroll Bawah (Siap Pakai)
-   ========================= */
-
-/* ====== util yang sudah ada di project ======
-   Asumsi: kamu sudah punya load(), save(), buildTradeRow()
-   dan (opsional) updateTotals(), updateProbabilities(), updateSummaryBoxes().
-   Kode di bawah akan aman walau fungsi2 opsional itu tidak ada. 
-*/
-
 /* ===== CRUD data ===== */
 function addTrade(obj){
   const data = load();
-  data.push(obj);              // tambah data baru (urut lama→baru, entry baru di bawah)
+  data.push(obj);     // ← sudah benar
   save(data);
-  renderTrades();              // render ulang agar terlihat
 }
-
-/* ===== helper: scroll ke bawah area tabel ===== */
 function scrollTradesToBottom(behavior = 'smooth'){
-  // Prioritas cari pembungkus scroll dengan id="tradeScroll", lalu .table-scroll, lalu parent dari #tradeList
   const scroller =
     document.getElementById('tradeScroll') ||
     document.querySelector('.table-scroll') ||
     document.getElementById('tradeList')?.parentElement;
 
   if (!scroller) return;
-
-  // Jalankan setelah layout selesai supaya tinggi sudah akurat
   requestAnimationFrame(()=>{
     scroller.scrollTo({ top: scroller.scrollHeight, behavior });
   });
 }
 
-/* ===== RENDER TABEL (urut lama → baru; entry baru di bawah) ===== */
+
+// === RENDER TABEL (urut lama → baru; entry baru di bawah) ===
 function renderTrades(){
   const tbody = document.getElementById('tradeList');
   if (!tbody) return;
-
   tbody.innerHTML = '';
+  if (typeof updateTotals === 'function') updateTotals(rows);
+  if (typeof updateProbabilities === 'function') updateProbabilities(rows);
+  if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
++ scrollTradesToBottom('smooth');
+}
 
-  // Ambil & urutkan data: tanggal valid → id sebagai fallback
+  // Ambil data dari storage versi kamu
   const rows = load().slice().sort((a,b)=>{
     const da = new Date(a?.setup_date || a?.createdAt || 0);
     const db = new Date(b?.setup_date || b?.createdAt || 0);
@@ -375,81 +364,29 @@ function renderTrades(){
     return ia.localeCompare(ib);
   });
 
-  // Bangun baris tabel
   for (const t of rows){
     const tr = (typeof buildTradeRow === 'function')
       ? buildTradeRow(t)
-      : document.createElement('tr'); // fallback aman (baris kosong)
-    tbody.appendChild(tr);            // → baris baru selalu di bawah
+      : document.createElement('tr'); // fallback aman
+    tbody.appendChild(tr); // → baris baru selalu di bawah
   }
 
-  // Hitung kotak-kotak ringkasan jika ada
-  if (typeof updateTotals === 'function')        updateTotals(rows);
+  // opsional: panggil kalkulasi jika ada
+  if (typeof updateTotals === 'function') updateTotals(rows);
   if (typeof updateProbabilities === 'function') updateProbabilities(rows);
-  if (typeof updateSummaryBoxes === 'function')  updateSummaryBoxes(rows);
-
-  // Otomatis gulung ke bawah agar entri terbaru terlihat
-  scrollTradesToBottom('smooth');
+  if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
 }
 
-// Ekspos bila dibutuhkan dari tempat lain
-window.renderTrades = renderTrades;
 
-/* ===== EDIT MODAL (isi form) ===== */
-function openEdit(id){
-  const all = load();
-  const t = all.find(x => x.id === id);
-  if (!t) return;
 
-  // Kalau kamu punya dropdown simbol khusus untuk edit
-  if (typeof ensureSymbolDropdownForEdit === 'function') {
-    ensureSymbolDropdownForEdit();
-  }
-
-  // Ambil form edit (sesuaikan bila nama/id berbeda)
-  const editForm =
-    document.forms?.editForm ||
-    document.getElementById('editForm') ||
-    document.querySelector('#editForm, form[name="editForm"]');
-
-  if (!editForm) return;
-
-  // Isi field — sesuaikan dengan field yang kamu pakai
-  if (editForm.id)           editForm.id.value = id;
-  if (editForm.setup_date)   editForm.setup_date.value = (typeof toDTInput === 'function')
-                                ? toDTInput(t.setup_date || '')
-                                : (t.setup_date || '');
-  if (editForm.symbol)       editForm.symbol.value = (typeof normalizeSymbol === 'function')
-                                ? normalizeSymbol(t.symbol || '')
-                                : (t.symbol || '');
-  if (editForm.side)         editForm.side.value = t.side || 'LONG';
-  if (editForm.entry_price)  editForm.entry_price.value = t.entry_price ?? 0;
-  if (editForm.stop_loss)    editForm.stop_loss.value  = t.stop_loss  ?? 0;
-
-  // Tambahkan field lain milikmu (tp1/tp2/tp3, notes, dll) di sini jika ada:
-  // if (editForm.tp1) editForm.tp1.value = t.tp1 ?? '';
-
-  // Buka modal edit (coba fungsi milikmu dulu; kalau tidak ada gunakan <dialog>)
-  if (typeof openEditModal === 'function') {
-    openEditModal();
-  } else if (typeof showEditModal === 'function') {
-    showEditModal();
-  } else {
-    const dlg = document.getElementById('editModal');
-    dlg?.showModal?.();
-  }
-}
-
-/* ===== INIT (opsional) =====
-   Panggil renderTrades saat halaman siap, jika belum dipanggil dari tempat lain.
-*/
-if (document.readyState === 'loading'){
-  document.addEventListener('DOMContentLoaded', ()=> renderTrades());
-} else {
-  // jika DOM sudah siap
-  renderTrades();
-}
-
+  // isi form
+  editForm.id.value = id;
+  editForm.setup_date.value = toDTInput(t.setup_date || '');
+  editForm.symbol.value = normalizeSymbol(t.symbol || '');
+  editForm.side.value = t.side || 'LONG';
+  editForm.entry_price.value = t.entry_price ?? 0;
+  editForm.stop_loss.value  = t.stop_loss  ?? 0;
+coba cek apa sudah seperti ini
 
   // gambar (base64)
   setImagePreview('before', t.img_before_data || '');
