@@ -674,24 +674,7 @@ projectsList?.addEventListener('click', e=>{
     }
   }
 });
-/* ===== Quick Save ke Project Aktif (“Simpan (NAMA)”) ===== */
-const saveToActiveBtn = document.querySelector('#saveToActiveBtn');
 
-/* Tampilkan/ubah label tombol sesuai project aktif */
-function updateActiveProjectUI(){
-  if (!saveToActiveBtn) return;
-  const act = (typeof getActiveProject === 'function' ? getActiveProject() : null) || { id:'', name:'' };
-
-  if (act && act.id){
-    saveToActiveBtn.textContent = `Simpan (${act.name})`;
-    saveToActiveBtn.classList.remove('hidden');
-    saveToActiveBtn.disabled = false;
-  }else{
-    saveToActiveBtn.textContent = 'Simpan (—)';
-    saveToActiveBtn.classList.add('hidden');
-    saveToActiveBtn.disabled = true;
-  }
-}
 
 /* ===== Quick Save ke Project Aktif (“Simpan (NAMA)”) ===== */
 const saveToActiveBtn = document.querySelector('#saveToActiveBtn');
