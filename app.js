@@ -1328,230 +1328,79 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   `;
 
   // ===== Lightbox (zoom + pan) =====
- // ===== Popout Annotator (robust trigger: click img + tombol overlay) =====
-const lightbox = `
-  <style>
-    .ann-btn{
-      position:absolute; top:8px; right:8px; z-index:3;
-      display:none; align-items:center; gap:6px;
-      background:rgba(2,6,23,.85); color:#e2e8f0;
-      border:1px solid #1f2937; padding:6px 8px; border-radius:8px;
-      font:12px/1.2 Inter,system-ui; cursor:pointer;
-    }
-    .thumb{ position:relative; }        /* pastikan parent relatif */
-    .thumb:hover .ann-btn{ display:flex } /* tampil saat hover */
-  </style>
-  <script>
-    (function(){
-      // Sisipkan tombol ✏️ di setiap gambar zoomable
-      function injectButtons(){
-        document.querySelectorAll('.thumb img.zoomable').forEach(function(img){
-          // hindari duplikat
-          if (img.nextElementSibling && img.nextElementSibling.classList && img.nextElementSibling.classList.contains('ann-btn')) return;
-          var btn = document.createElement('button');
-          btn.type='button';
-          btn.className='ann-btn';
-          btn.innerHTML='✏️ Annotate';
-          btn.addEventListener('click', function(ev){
-            ev.stopPropagation(); ev.preventDefault();
-            openAnnotator(img.getAttribute('src')||'');
-          });
-          img.parentElement.appendChild(btn);
-          // klik gambar juga membuka annotator
-          img.addEventListener('click', function(){
-            openAnnotator(img.getAttribute('src')||'');
-          });
-        });
-      }
-
-      // Buka jendela pop-out berisi annotator (zoom+pan+pensil)
-      function openAnnotator(src){
-        // popup blocker? kalau gagal, kasih alert
-        var w = window.open('', '_blank', 'width=1200,height=800');
-        if (!w){ alert('Popup diblokir. Izinkan pop-up untuk membuka annotator.'); return; }
-
-        w.document.open();
-        w.document.write(\`<!doctype html>
-<html lang="id"><head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Annotator</title>
-<style>
-  :root{--ring:rgba(255,255,255,.08)}
-  html,body{height:100%;margin:0;background:#000;color:#e2e8f0;font:14px/1.4 system-ui,Inter,Segoe UI,Roboto}
-  .wrap{position:fixed; inset:0; display:flex; align-items:center; justify-content:center; overflow:hidden}
-  .stage{position:relative; overflow:hidden; max-width:96vw; max-height:94vh; background:#000; border:1px solid var(--ring); border-radius:12px; box-shadow:0 20px 60px rgba(0,0,0,.55)}
-  #vp{ position:relative; transform-origin:0 0; cursor:grab; }
-  #vp.drag{ cursor:grabbing; }
-  #img,#can{ position:absolute; top:0; left:0; max-width:none; max-height:none; user-select:none; -webkit-user-drag:none; }
-  #can{ pointer-events:none; }
-  .bar{ position:fixed; top:14px; left:14px; z-index:50; display:flex; gap:8px; align-items:center;
-        background:rgba(2,6,23,.85); border:1px solid #1f2937; padding:8px; border-radius:10px; backdrop-filter:blur(6px); }
-  .btn{ border:1px solid #334155; background:#0b1220; color:#e2e8f0; padding:6px 8px; border-radius:8px; font-weight:600; font-size:12px }
-  .btn.on{ background:#0ea5e9; border-color:#7dd3fc; color:#0b1220 }
-  .sw{ width:28px; height:28px; border-radius:8px; border:1px solid #334155; overflow:hidden; display:flex }
-  .sw input{ width:100%; height:100%; border:0; padding:0; background:transparent }
-  .rng{ width:100px; accent-color:#0ea5e9 }
-  .hint{ position:fixed; bottom:14px; left:14px; z-index:50; padding:6px 10px; background:rgba(2,6,23,.7);
-         border:1px solid #1f2937; border-radius:10px; font:12px/1.2 system-ui,Inter; color:#cbd5e1; }
-  .topright{ position:fixed; top:14px; right:14px; z-index:50; background:#111827; color:#fff; border:1px solid var(--ring);
-             padding:6px 10px; border-radius:10px; cursor:pointer; }
-</style>
-</head>
-<body>
-  <div class="bar" id="bar">
-    <button class="btn" data-tool="pen" title="Pensil (P)">Pen</button>
-    <button class="btn" data-tool="eraser" title="Penghapus (E)">Eraser</button>
-    <span class="sw"><input type="color" id="clr" value="#ff4757" title="Warna"></span>
-    <input type="range" id="sz" min="1" max="24" value="3" class="rng" title="Tebal">
-    <button class="btn" data-act="undo" title="Undo (Ctrl+Z)">Undo</button>
-    <button class="btn" data-act="clear" title="Hapus">Clear</button>
-    <button class="btn" data-act="save" title="Simpan PNG">Save PNG</button>
-  </div>
-  <button class="topright" id="closeBtn">Tutup</button>
-  <div class="wrap">
-    <div class="stage" id="stage">
-      <div id="vp">
-        <img id="img" alt="">
-        <canvas id="can"></canvas>
+  const lightbox = `
+    <div id="lb" aria-modal="true" role="dialog">
+      <button class="close" aria-label="Tutup">Tutup</button>
+      <div id="lbInner">
+        <img id="lbImg" alt="">
       </div>
     </div>
-    <div class="hint">Zoom: scroll • Pan: drag saat zoom &gt; 1 • Gambar: tarik mouse</div>
-  </div>
-<script>
-(function(){
-  var img = document.getElementById('img');
-  var can = document.getElementById('can'), ctx = can.getContext('2d');
-  var vp = document.getElementById('vp'), stage = document.getElementById('stage');
+    <script>
+      (function(){
+        var lb = document.getElementById('lb');
+        var img = document.getElementById('lbImg');
+        var inner = document.getElementById('lbInner');
+        var btnClose = lb.querySelector('.close');
 
-  var scale=1, MIN=1, MAX=6, tx=0, ty=0, panning=false, sx=0, sy=0, stx=0, sty=0;
-  var tool='pen', color='#ff4757', size=3, drawing=false, strokes=[];
+        var baseScale = 1, scale = 1, MIN_Z = 1, MAX_Z = 5, STEP = 0.2;
+        var tx = 0, ty = 0, startX=0, startY=0, startTx=0, startTy=0, dragging=false;
 
-  function setTool(t){
-    tool=t;
-    document.querySelectorAll('.btn[data-tool]').forEach(b=>b.classList.toggle('on', b.getAttribute('data-tool')===t));
-    can.style.pointerEvents = (t==='pen'||t==='eraser') ? 'auto' : 'none';
-  }
-  function fitBase(){
-    var w = img.naturalWidth||img.width, h = img.naturalHeight||img.height;
-    img.style.width=w+'px'; img.style.height=h+'px';
-    can.width=w; can.height=h; can.style.width=w+'px'; can.style.height=h+'px';
-    scale=1; tx=0; ty=0; apply(); ctx.clearRect(0,0,can.width,can.height); strokes.length=0;
-  }
-  function apply(){ vp.style.transform='translate('+tx+'px,'+ty+'px) scale('+scale+')'; }
-  function clamp(){
-    var cw=stage.clientWidth, ch=stage.clientHeight;
-    var w=can.width*scale, h=can.height*scale;
-    var mx=Math.max(0,(w-cw)/2), my=Math.max(0,(h-ch)/2);
-    if(tx> mx) tx= mx; if(tx<-mx) tx=-mx;
-    if(ty> my) ty= my; if(ty<-my) ty=-my;
-  }
-  function toXY(x,y){
-    var r=vp.getBoundingClientRect();
-    x=(x-r.left-tx)/scale; y=(y-r.top-ty)/scale;
-    if(x<0)x=0;if(y<0)y=0;if(x>can.width)x=can.width;if(y>can.height)y=can.height;
-    return {x,y};
-  }
-
-  stage.addEventListener('wheel', function(e){
-    e.preventDefault();
-    var r=vp.getBoundingClientRect();
-    var cx=(e.clientX-r.left-tx)/scale;
-    var cy=(e.clientY-r.top -ty)/scale;
-    var next=Math.max(MIN,Math.min(MAX, scale*(1+(-Math.sign(e.deltaY))*0.12)));
-    if(next===scale) return;
-    tx=e.clientX-r.left-cx*next; ty=e.clientY-r.top-cy*next; scale=next; clamp(); apply();
-  }, {passive:false});
-
-  stage.addEventListener('mousedown', function(e){
-    if(scale<=1) return; panning=true; vp.classList.add('drag'); sx=e.clientX; sy=e.clientY; stx=tx; sty=ty;
-  });
-  window.addEventListener('mousemove', function(e){
-    if(!panning) return; tx=stx+(e.clientX-sx); ty=sty+(e.clientY-sy); clamp(); apply();
-  });
-  window.addEventListener('mouseup', function(){ if(panning){ panning=false; vp.classList.remove('drag'); }});
-
-  can.addEventListener('mousedown', function(e){
-    drawing=true; var p=toXY(e.clientX,e.clientY);
-    ctx.save(); ctx.globalCompositeOperation=(tool==='eraser')?'destination-out':'source-over';
-    ctx.strokeStyle=color; ctx.lineWidth=size; ctx.lineCap='round'; ctx.lineJoin='round';
-    ctx.beginPath(); ctx.moveTo(p.x,p.y);
-    strokes.push({type:tool,color,size,path:[[p.x,p.y]]});
-  });
-  window.addEventListener('mousemove', function(e){
-    if(!drawing) return; var p=toXY(e.clientX,e.clientY); ctx.lineTo(p.x,p.y); ctx.stroke(); strokes[strokes.length-1].path.push([p.x,p.y]);
-  });
-  window.addEventListener('mouseup', function(){ if(!drawing) return; drawing=false; ctx.closePath(); ctx.restore(); });
-
-  document.getElementById('bar').addEventListener('click', function(e){
-    var b=e.target.closest('.btn'); if(!b) return;
-    if(b.dataset.tool){ setTool(b.dataset.tool); return; }
-    if(b.dataset.act==='undo'){ undo(); return; }
-    if(b.dataset.act==='clear'){ ctx.clearRect(0,0,can.width,can.height); strokes.push({type:'clear'}); return; }
-    if(b.dataset.act==='save'){ savePNG(); return; }
-  });
-  document.getElementById('clr').addEventListener('input', e=>color=e.target.value);
-  document.getElementById('sz').addEventListener('input', e=>size=+e.target.value);
-
-  function undo(){
-    if(!strokes.length) return;
-    var hist=strokes.slice(0,-1);
-    ctx.clearRect(0,0,can.width,can.height);
-    hist.forEach(function(s){
-      if(s.type==='clear') return;
-      ctx.save();
-      ctx.globalCompositeOperation=(s.type==='eraser')?'destination-out':'source-over';
-      ctx.strokeStyle=s.color; ctx.lineWidth=s.size; ctx.lineCap='round'; ctx.lineJoin='round';
-      ctx.beginPath();
-      ctx.moveTo(s.path[0][0], s.path[0][1]);
-      for(var i=1;i<s.path.length;i++){ ctx.lineTo(s.path[i][0], s.path[i][1]); }
-      ctx.stroke(); ctx.closePath(); ctx.restore();
-    });
-    strokes=hist;
-  }
-  function savePNG(){
-    try{
-      var tmp=document.createElement('canvas'); tmp.width=can.width; tmp.height=can.height;
-      var tctx=tmp.getContext('2d'); tctx.drawImage(img,0,0,tmp.width,tmp.height); tctx.drawImage(can,0,0);
-      var url=tmp.toDataURL('image/png'); var a=document.createElement('a'); a.href=url; a.download='annotated.png'; a.click();
-    }catch(err){
-      alert('Export PNG diblokir (CORS). Coretan tetap bisa dipakai; gunakan gambar dataURL/base64 untuk mengizinkan export.');
-    }
-  }
-
-  window.addEventListener('keydown', function(e){
-    if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='z'){ e.preventDefault(); undo(); }
-    if(e.key==='p'||e.key==='P') setTool('pen');
-    if(e.key==='e'||e.key==='E') setTool('eraser');
-    if(e.key==='Escape') window.close();
-  });
-
-  img.onload=function(){ fitBase(); setTool('pen'); };
-  try{ img.crossOrigin='anonymous'; }catch(_){}
-  img.src = \${JSON.stringify(src)};
-  document.getElementById('closeBtn').onclick=function(){ window.close(); };
-})();
-</script>
-</body></html>\`);
-        w.document.close();
-      }
-
-      // Pasang listener (klik img) + injeksi tombol setelah DOM siap
-      document.addEventListener('DOMContentLoaded', injectButtons);
-      // kalau kartu dimuat dinamis, coba ulang injeksi setelah 300ms
-      setTimeout(injectButtons, 300);
-      // fallback: delegasi klik pada dokumen juga
-      document.addEventListener('click', function(e){
-        var t = e.target;
-        if (t && t.classList && t.classList.contains('zoomable')){
-          openAnnotator(t.getAttribute('src')||'');
+        function apply(){ img.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (baseScale * scale) + ')';
+          img.style.cursor = dragging ? 'grabbing' : (scale > 1 ? 'grab' : 'zoom-in'); }
+        function reset(){ scale=1; tx=0; ty=0; apply(); }
+        function fitBase(){
+          var cw=inner.clientWidth, ch=inner.clientHeight;
+          var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height;
+          baseScale = (!nw||!nh||!cw||!ch) ? 1 : Math.min(cw/nw, ch/nh);
+          img.style.width = nw + 'px'; img.style.height='auto';
         }
-      }, true);
-    })();
-  </script>
-`;
+        function clamp(){
+          var cw=inner.clientWidth, ch=inner.clientHeight;
+          var nw=img.naturalWidth||img.width, nh=img.naturalHeight||img.height;
+          var sw=nw*baseScale*scale, sh=nh*baseScale*scale;
+          var mx=Math.max(0,(sw-cw)/2), my=Math.max(0,(sh-ch)/2);
+          if (tx> mx) tx= mx; if (tx<-mx) tx=-mx;
+          if (ty> my) ty= my; if (ty<-my) ty=-my;
+        }
+        function openFrom(el){
+          img.onload=function(){ fitBase(); reset(); };
+          img.src = el.getAttribute('src')||''; lb.classList.add('open');
+        }
+        function hide(){ lb.classList.remove('open'); img.src=''; }
 
+        document.addEventListener('click',function(e){
+          var t=e.target; if(t && t.classList && t.classList.contains('zoomable')) openFrom(t);
+        });
+        lb.addEventListener('click', function(e){ if(e.target===lb) hide(); });
+        btnClose.addEventListener('click', hide);
+        document.addEventListener('keydown', function(e){ if(e.key==='Escape') hide(); });
 
+        function onWheel(e){
+          e.preventDefault();
+          var dir=(e.deltaY<0)?1:-1, next=Math.min(MAX_Z,Math.max(MIN_Z, scale+dir*STEP));
+          if(next!==scale){ scale=next; clamp(); apply(); }
+        }
+        inner.addEventListener('wheel', onWheel, {passive:false});
+        img.addEventListener('wheel',   onWheel, {passive:false});
+
+        function canPan(){ return scale>1; }
+        function down(x,y){ if(!canPan()) return; dragging=true; startX=x; startY=y; startTx=tx; startTy=ty; document.body.style.userSelect='none'; apply(); }
+        function move(x,y){ if(!dragging) return; tx=startTx+(x-startX); ty=startTy+(y-startY); clamp(); apply(); }
+        function up(){ if(!dragging) return; dragging=false; document.body.style.userSelect=''; apply(); }
+
+        inner.addEventListener('mousedown', function(e){ down(e.clientX,e.clientY); });
+        document.addEventListener('mousemove', function(e){ move(e.clientX,e.clientY); });
+        document.addEventListener('mouseup', up);
+
+        inner.addEventListener('touchstart', function(e){ if(e.touches.length!==1) return; var t=e.touches[0]; down(t.clientX,t.clientY); }, {passive:true});
+        inner.addEventListener('touchmove', function(e){ if(!dragging||e.touches.length!==1) return; var t=e.touches[0]; move(t.clientX,t.clientY); }, {passive:true});
+        inner.addEventListener('touchend', up);
+        inner.addEventListener('touchcancel', up);
+
+        addEventListener('resize', function(){ if(!lb.classList.contains('open')) return; fitBase(); clamp(); apply(); });
+      })();
+    </script>
+  `;
 
   // ==== RETURN HTML ====
   return `<!doctype html>
