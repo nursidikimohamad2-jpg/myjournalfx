@@ -1438,142 +1438,298 @@ return `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>${projectName} — Presentasi</title>
-  <style>${css}</style>
+  <style>
+    ${css}
+    /* === Stage yang akan di-zoom & pan === */
+    #stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;            /* cegah scroll bawaan, pakai pan sendiri */
+      background: #07111f;
+      touch-action: none;          /* biar gesture tidak bentrok */
+    }
+    #stageInner {
+      position: absolute; left:0; top:0;
+      transform-origin: 0 0;       /* penting: skala dari pojok kiri atas */
+      will-change: transform;
+    }
+    /* Canvas & toolbar ditempatkan di atas konten, ikut transform (karena di dalam #stageInner) */
+    #annotCanvas {
+      position: absolute; left:0; top:0;
+      pointer-events: auto;        /* bisa digambar */
+    }
+    .annot-toolbar{
+      position: absolute; right: 18px; top: 18px; z-index: 10;
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(15,23,42,.92);
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 12px; padding: 8px 10px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.35);
+    }
+    .annot-toolbar *{ font: 12px system-ui, Inter, Segoe UI, Roboto }
+    .annot-toolbar label{ color:#9fb1c5 }
+    .annot-toolbar input[type="color"]{ width: 30px; height: 22px; padding:0; border:none; background:transparent; }
+    .annot-toolbar button{
+      background:#0b1628; color:#e5f0ff; border:1px solid rgba(255,255,255,.15);
+      border-radius: 8px; padding:6px 10px; cursor: pointer;
+    }
+    .annot-toolbar button:hover{ filter:brightness(1.12) }
+    @media print{ .annot-toolbar{ display:none !important } }
+  </style>
 </head>
 <body>
-  <div class="wrap">
-    ${header}
-    ${tradeCards || ''}
-    </div><!-- /report-main -->
+  <!-- STAGE: semua yang di-zoom/pan diletakkan di dalam ini -->
+  <div id="stage">
+    <div id="stageInner">
+      <div class="wrap">
+        ${header}
+        ${tradeCards || ''}
+        <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
+        ${fab}
+      </div>
 
-    <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
-    ${fab}
+      <!-- Canvas anotasi ukurannya disamakan dengan area konten (wrap) -->
+      <canvas id="annotCanvas"></canvas>
 
-    <!-- === [BARU] Annotation Canvas (overlay seluruh halaman) === -->
-    <canvas id="annotCanvas"></canvas>
-
-    <!-- === [BARU] Toolbar anotasi === -->
-    <div class="annot-toolbar">
-      <button id="annotToggle">Pensil: OFF</button>
-      <label>Warna <input id="annotColor" type="color" value="#22d3ee"></label>
-      <label>Tebal <input id="annotSize" type="range" min="1" max="16" value="3"></label>
-      <button id="annotUndo">Undo</button>
-      <button id="annotClear">Clear</button>
-      <button id="annotSave">Save PNG</button>
+      <!-- Toolbar ikut transform (dinamis) karena di dalam stageInner -->
+      <div class="annot-toolbar">
+        <button id="annotToggle">Pensil: OFF</button>
+        <label>Warna <input id="annotColor" type="color" value="#22d3ee"></label>
+        <label>Tebal <input id="annotSize" type="range" min="1" max="16" value="3"></label>
+        <button id="annotUndo">Undo</button>
+        <button id="annotClear">Clear</button>
+        <button id="annotSave">Save PNG</button>
+      </div>
     </div>
+  </div>
 
-    <!-- === [STEP 3 nanti] Script anotasi akan ditempel di sini === -->
-<!-- [BARU] Script Anotasi -->
-<script>
-(function(){
-  const cvs   = document.getElementById('annotCanvas');
-  const ctx   = cvs.getContext('2d');
-  const btn   = document.getElementById('annotToggle');
-  const col   = document.getElementById('annotColor');
-  const size  = document.getElementById('annotSize');
-  const undo  = document.getElementById('annotUndo');
-  const clear = document.getElementById('annotClear');
-  const save  = document.getElementById('annotSave');
+  <script>
+  (function(){
+    // Elemen
+    const stage      = document.getElementById('stage');
+    const stageInner = document.getElementById('stageInner');
+    const wrap       = stageInner.querySelector('.wrap');
+    const cvs        = document.getElementById('annotCanvas');
+    const ctx        = cvs.getContext('2d');
 
-  let active   = false;   // pensil ON/OFF
-  let drawing  = false;
-  let history  = [];      // untuk Undo
-  const MAX_STACK = 30;
+    const btn   = document.getElementById('annotToggle');
+    const col   = document.getElementById('annotColor');
+    const size  = document.getElementById('annotSize');
+    const undo  = document.getElementById('annotUndo');
+    const clear = document.getElementById('annotClear');
+    const save  = document.getElementById('annotSave');
 
-  function fitCanvas(){
-    // Full-screen overlay, hi-DPI aware
-    const dpr = window.devicePixelRatio || 1;
-    cvs.width  = Math.round(innerWidth * dpr);
-    cvs.height = Math.round(innerHeight * dpr);
-    cvs.style.width  = innerWidth + 'px';
-    cvs.style.height = innerHeight + 'px';
-    ctx.setTransform(dpr,0,0,dpr,0,0);
-  }
+    // ====== state zoom & pan ======
+    let scale = 1;            // skala
+    let tx = 0, ty = 0;       // translasi (px)
+    const MIN_Z = 0.5, MAX_Z = 5, STEP = 0.1;
 
-  function pushState(){
-    // Simpan snapshot (bisa besar; batasi stack)
-    try{
-      if (history.length >= MAX_STACK) history.shift();
-      history.push(cvs.toDataURL('image/png'));
-    }catch(_){ /* abaikan jika gagal karena memori */ }
-  }
-
-  function startDraw(x,y){
-    drawing = true;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.strokeStyle = col.value;
-    ctx.lineWidth   = +size.value;
-    ctx.beginPath();
-    ctx.moveTo(x,y);
-  }
-  function moveDraw(x,y){
-    if(!drawing) return;
-    ctx.lineTo(x,y);
-    ctx.stroke();
-  }
-  function endDraw(){
-    if(!drawing) return;
-    drawing = false;
-    ctx.closePath();
-    pushState();
-  }
-
-  // Pointer events (mouse + touch + pen)
-  cvs.addEventListener('pointerdown', e=>{
-    if(!active) return;
-    cvs.setPointerCapture(e.pointerId);
-    startDraw(e.offsetX, e.offsetY);
-  });
-  cvs.addEventListener('pointermove', e=>{
-    if(!active) return;
-    moveDraw(e.offsetX, e.offsetY);
-  });
-  ['pointerup','pointercancel','pointerleave'].forEach(ev=> cvs.addEventListener(ev, endDraw));
-
-  // Toolbar
-  btn.addEventListener('click', ()=>{
-    active = !active;
-    btn.textContent = 'Pensil: ' + (active ? 'ON' : 'OFF');
-    cvs.classList.toggle('on', active);
-  });
-
-  undo.addEventListener('click', ()=>{
-    if(!history.length) return;
-    // buang state terakhir (current)
-    history.pop();
-    const prev = history[history.length-1];
-    ctx.clearRect(0,0,cvs.width,cvs.height);
-    if(prev){
-      const img = new Image();
-      img.onload = ()=> ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
-      img.src = prev;
+    function applyTransform(){
+      stageInner.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + scale + ')';
     }
-  });
 
-  clear.addEventListener('click', ()=>{
-    ctx.clearRect(0,0,cvs.width,cvs.height);
-    history = [];
-  });
+    // ====== ukuran canvas menyesuaikan ukuran konten (wrap) dalam koordinat asli (sebelum transform) ======
+    function fitCanvasToWrap(){
+      // pakai ukuran layout wrap (tanpa scale), canvas menggambar di koordinat asli
+      const rect = wrap.getBoundingClientRect();
+      // rect sudah terpengaruh transform; kita ambil ukuran asli via offsetWidth/Height element sebelum transform:
+      // trik: reset transform sementara untuk baca ukuran asli
+      const prev = stageInner.style.transform;
+      stageInner.style.transform = 'translate(0,0) scale(1)';
+      const w = wrap.offsetWidth;
+      const h = wrap.offsetHeight;
+      stageInner.style.transform = prev;
 
-  save.addEventListener('click', ()=>{
-    const a = document.createElement('a');
-    a.download = 'annotation.png';
-    a.href = cvs.toDataURL('image/png');
-    a.click();
-  });
+      const dpr = window.devicePixelRatio || 1;
+      cvs.width = Math.round(w * dpr);
+      cvs.height= Math.round(h * dpr);
+      cvs.style.width  = w + 'px';
+      cvs.style.height = h + 'px';
+      // posisikan canvas mengikuti .wrap
+      const wrapRect = wrap.getBoundingClientRect();
+      const innerRect = stageInner.getBoundingClientRect();
+      const left = wrap.offsetLeft;
+      const top  = wrap.offsetTop;
+      cvs.style.left = left + 'px';
+      cvs.style.top  = top + 'px';
 
-  window.addEventListener('resize', fitCanvas, { passive:true });
-  fitCanvas();
-  pushState();   // state awal (kanvas kosong)
-})();
-</script>
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
 
-  </div><!-- /.wrap -->
+    // ====== Mengubah koordinat pointer -> ke koordinat canvas (kompensasi pan & zoom) ======
+    function toCanvasPoint(clientX, clientY){
+      const innerRect = stageInner.getBoundingClientRect(); // sudah termasuk translate & scale
+      // posisi pointer relatif ke stageInner SETELAH transform
+      const xScreen = clientX - innerRect.left;
+      const yScreen = clientY - innerRect.top;
+      // balikkan transform: bagi skala
+      const xLocal = xScreen / scale;
+      const yLocal = yScreen / scale;
+      // sesuaikan offset canvas di dalam stageInner
+      const canvasLeft = cvs.offsetLeft;
+      const canvasTop  = cvs.offsetTop;
+      return { x: xLocal - canvasLeft, y: yLocal - canvasTop };
+    }
+
+    // ====== zoom dengan wheel (biar smooth di posisi pointer) ======
+    stage.addEventListener('wheel', (e)=>{
+      e.preventDefault();
+      const dir = e.deltaY < 0 ? 1 : -1;
+      const old = scale;
+      let next = Math.min(MAX_Z, Math.max(MIN_Z, scale + dir * STEP));
+
+      if (next === scale) return;
+
+      // zoom ke arah pointer (pivotal zoom)
+      const rect = stage.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+
+      // posisi titik sebelum & sesudah zoom → update tx,ty
+      const dx = (cx - tx) / old;
+      const dy = (cy - ty) / old;
+      tx = cx - dx * next;
+      ty = cy - dy * next;
+
+      scale = next;
+      applyTransform();
+    }, { passive:false });
+
+    // ====== pan dengan drag (tahan tombol tengah / atau tahan spasi + drag kiri) ======
+    let panning = false;
+    let spaceHeld = false;
+    let startX=0, startY=0, startTx=0, startTy=0;
+
+    window.addEventListener('keydown', (e)=>{ if(e.code==='Space'){ spaceHeld=true; }});
+    window.addEventListener('keyup',   (e)=>{ if(e.code==='Space'){ spaceHeld=false; }});
+
+    stage.addEventListener('pointerdown', (e)=>{
+      // pan saat: tombol tengah, atau spasi + tombol kiri
+      if (e.button === 1 || (spaceHeld && e.button === 0)){
+        panning = true;
+        startX = e.clientX; startY = e.clientY;
+        startTx = tx; startTy = ty;
+        stage.setPointerCapture(e.pointerId);
+      }
+    });
+    stage.addEventListener('pointermove', (e)=>{
+      if(!panning) return;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      tx = startTx + dx;
+      ty = startTy + dy;
+      applyTransform();
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+      stage.addEventListener(ev, ()=>{ panning = false; });
+    });
+
+    // ====== Gambar (di atas konten) ======
+    let drawing = false;
+    let history = [];
+    const MAX_STACK = 30;
+
+    function pushState(){
+      try{
+        if (history.length >= MAX_STACK) history.shift();
+        history.push(cvs.toDataURL('image/png'));
+      }catch(_){}
+    }
+
+    function startDraw(x,y){
+      drawing = true;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = col.value;
+      ctx.lineWidth   = +size.value;
+      ctx.beginPath();
+      ctx.moveTo(x,y);
+    }
+    function moveDraw(x,y){
+      if(!drawing) return;
+      ctx.lineTo(x,y);
+      ctx.stroke();
+    }
+    function endDraw(){
+      if(!drawing) return;
+      drawing = false;
+      ctx.closePath();
+      pushState();
+    }
+
+    // pointer untuk menggambar — kita ambil koordinat via toCanvasPoint()
+    cvs.addEventListener('pointerdown', (e)=>{
+      // hanya tombol kiri (0), dan jangan gambar kalau sedang pan (space)
+      if (e.button !== 0 || spaceHeld) return;
+      const {x,y} = toCanvasPoint(e.clientX, e.clientY);
+      startDraw(x,y);
+      cvs.setPointerCapture(e.pointerId);
+    });
+    cvs.addEventListener('pointermove', (e)=>{
+      if(!drawing) return;
+      const {x,y} = toCanvasPoint(e.clientX, e.clientY);
+      moveDraw(x,y);
+    });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>{
+      cvs.addEventListener(ev, endDraw);
+    });
+
+    // toolbar
+    let pencilOn = false;
+    btn.addEventListener('click', ()=>{
+      pencilOn = !pencilOn;
+      btn.textContent = 'Pensil: ' + (pencilOn ? 'ON' : 'OFF');
+      // trik sederhana: aktif/nonaktifkan pointer-events canvas
+      cvs.style.pointerEvents = pencilOn ? 'auto' : 'none';
+    });
+
+    undo.addEventListener('click', ()=>{
+      if(!history.length) return;
+      history.pop();
+      const prev = history[history.length-1];
+      ctx.clearRect(0,0,cvs.width,cvs.height);
+      if(prev){
+        const img = new Image();
+        img.onload = ()=> ctx.drawImage(img,0,0,cvs.width,cvs.height);
+        img.src = prev;
+      }
+    });
+
+    clear.addEventListener('click', ()=>{
+      ctx.clearRect(0,0,cvs.width,cvs.height);
+      history = [];
+    });
+
+    save.addEventListener('click', ()=>{
+      const a = document.createElement('a');
+      a.download = 'annotation.png';
+      a.href = cvs.toDataURL('image/png');
+      a.click();
+    });
+
+    // inisialisasi
+    function init(){
+      // tempel stageInner di posisi awal
+      scale = 1; tx = 0; ty = 0;
+      applyTransform();
+      // ukur canvas sesuai konten
+      fitCanvasToWrap();
+      // default: pensil OFF (kanvas non-interaktif)
+      cvs.style.pointerEvents = 'none';
+    }
+
+    window.addEventListener('resize', ()=>{
+      // kalau viewport berubah, sesuaikan ukuran canvas
+      fitCanvasToWrap();
+    });
+
+    init();
+  })();
+  </script>
+
 </body>
 </html>`;
-
-}
 
 /* =====================================================
    Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
