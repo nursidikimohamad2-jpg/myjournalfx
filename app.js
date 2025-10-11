@@ -1054,13 +1054,10 @@ exportHtmlBtn?.addEventListener('click', () => {
 (function injectExportPresentasiButton(){
   if (!exportHtmlBtn) return;
 
-  // 1) Kalau sudah ada tombol resmi kita, hapus dulu (supaya tidak dobel
-  //    jika file JS ter-load 2x karena cache/bundle)
-  const old = document.querySelector('#exportPresentBtn');
-  if (old) old.remove();
+  // 1) Bersihkan tombol lama jika ada (hindari dobel saat file ter-load 2x)
+  document.querySelector('#exportPresentBtn')?.remove();
 
-  // 2) Hapus tombol "kembar" lain yang kebetulan teksnya sama tapi bukan milik kita
-  //    (misal ada tombol manual di HTML). Aman karena kita sisakan hanya yang ber-ID.
+  // 2) Bersihkan tombol kembar lain yang bukan milik kita (hanya pakai yang ber-ID)
   [...document.querySelectorAll('button')]
     .filter(b => b.textContent.trim() === 'Export Presentasi' && b.id !== 'exportPresentBtn')
     .forEach(b => b.remove());
@@ -1072,13 +1069,12 @@ exportHtmlBtn?.addEventListener('click', () => {
   btn.className = 'bg-slate-900/70 ring-1 ring-white/10 px-3 py-1 rounded-lg';
   btn.textContent = 'Export Presentasi';
 
-  // sisipkan tepat setelah "Export HTML"
+  // sisipkan tepat setelah tombol "Export HTML"
   exportHtmlBtn.insertAdjacentElement('afterend', btn);
 
   // 4) Pasang handler
   btn.addEventListener('click', exportPresentationHTML);
 })();
-
 
 function exportPresentationHTML(){
   try {
@@ -1087,8 +1083,14 @@ function exportPresentationHTML(){
     const projectName = activeName || 'Jurnal Aktif';
     const stats = computeStats(trades);
 
-    const html = buildPresentationHTML({ projectName, createdAt: new Date().toLocaleString('id-ID'), trades, stats });
-    const fname=`rr-presentasi-${slugify(projectName)}.html`;
+    const html = buildPresentationHTML({
+      projectName,
+      createdAt: new Date().toLocaleString('id-ID'),
+      trades,
+      stats
+    });
+
+    const fname = `rr-presentasi-${slugify(projectName)}.html`;
     downloadTextFile(fname, html, 'text/html');
   } catch (e){
     console.error('Export Presentasi error:', e);
@@ -1114,7 +1116,7 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   .thumb>img{max-width:100%;max-height:100%;object-fit:contain}
   .cap{font-size:12px;color:var(--muted);margin-top:6px}
   .badge{display:inline-flex;align-items:center;gap:6px;padding:.2rem .55rem;border-radius:999px;border:1px solid var(--ring);font-size:12px}
-  .LONG{background:#032a3a;color:#aaf; border-color:#0ea5e9}
+  .LONG{background:#032a3a;color:#aaf;border-color:#0ea5e9}
   .SHORT{background:#3a1a1a;color:#ffd6d6;border-color:#f97316}
   .TP1,.TP2,.TP3{background:rgba(16,185,129,.1);color:#a7f3d0;border-color:#10b981}
   .SL{background:rgba(244,63,94,.1);color:#fecaca;border-color:#f43f5e}
@@ -1130,42 +1132,70 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   .grow{flex:1}
   .right{text-align:right}
   .sep{height:1px;background:var(--ring);margin:10px 0}
-  @media (max-width:900px){ .row{grid-template-columns:1fr} .cards{grid-template-columns:repeat(2,1fr)} }
-  @media print{ body{background:#fff;color:#000} .card,.block,.thumb,.eval{background:#fff;border-color:#ddd} }
+
+  @media (max-width:900px){
+    .row{grid-template-columns:1fr}
+    .cards{grid-template-columns:repeat(2,1fr)}
+  }
+  @media print{
+    body{background:#fff;color:#000}
+    .card,.block,.thumb,.eval{background:#fff;border-color:#ddd}
+  }
+
+  /* === SCROLL + STICKY HEADER (PRESENTASI) === */
+  html,body{height:100%}
+  body{overflow-y:auto}                 /* pastikan file export bisa discroll */
+  .report-header{
+    position: sticky; top:0; z-index:50;
+    background: rgba(15,23,42,.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .report-main{ padding-top:12px }
+  @media print{
+    .report-header{ position:static; backdrop-filter:none; background:transparent }
+    .report-main{ padding-top:0 }
+  }
   `;
+
   const fmt = n => (+n).toLocaleString('id-ID',{minimumFractionDigits:2, maximumFractionDigits:2});
   const fmt0 = n => (+n).toLocaleString('id-ID',{maximumFractionDigits:0});
   const signClass = n => n>=0 ? 'pos' : 'neg';
 
-  const win = stats.results.wins;
+  const win  = stats.results.wins;
   const loss = stats.results.counts.SL;
 
+  // ===== HEADER DIKUNCI + buka konten utama =====
   const header = `
-    <div>
-      <h1>${projectName}</h1>
-      <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
+    <div class="report-header">
+      <div>
+        <h1>${projectName}</h1>
+        <div class="muted">Rentang: ${stats.range.min||'-'} — ${stats.range.max||'-'} • Disusun otomatis dari RR Journal</div>
+      </div>
+      <div class="cards">
+        <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
+        <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
+        <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
+        <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
+        <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
+      </div>
     </div>
-    <div class="cards">
-      <div class="card"><div class="k">Transaksi</div><div class="v">${fmt0(stats.total)}</div></div>
-      <div class="card"><div class="k">Win / Loss</div><div class="v">${fmt0(win)} / ${fmt0(loss)}</div></div>
-      <div class="card"><div class="k">Total R (Net)</div><div class="v ${signClass(stats.rsumTotal)}">${stats.rsumTotal}</div></div>
-      <div class="card"><div class="k">1R (USD)</div><div class="v">$${fmt(stats.sim.oneR)}</div></div>
-      <div class="card"><div class="k">P/L (USD)</div><div class="v ${signClass(stats.sim.pnl)}">$${fmt(stats.sim.pnl)}</div></div>
-    </div>
+
+    <div class="report-main">
   `;
 
-  // running P/L & Equity
+  // ===== Running P/L & Equity (sesuai skripmu) =====
   const oneR = stats.sim.oneR;
   let runR = 0;
   let runPnlUSD = 0;
   let runEq = stats.sim.base;
 
-  // build trade cards
+  // ===== Kartu per-trade (mengikuti skripmu) =====
   const tradeCards = (trades||[]).map(t=>{
-    const sym = normalizeSymbol(t.symbol);
+    const sym  = normalizeSymbol(t.symbol);
     const prec = precisionForSymbol(sym);
     const entry = +t.entry_price || 0;
-    const sl    = +t.stop_loss || 0;
+    const sl    = +t.stop_loss   || 0;
     const d     = Math.abs(entry - sl);
     const tp1   = t.side==='LONG'? entry+d   : entry-d;
     const tp2   = t.side==='LONG'? entry+2*d : entry-2*d;
@@ -1195,11 +1225,29 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 
         <div class="row">
           <div>
-            <div class="thumb">${imgBefore ? `<img src="${imgBefore}" alt="Sebelum">` : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,90 L140,130 L280,60 L420,170 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}</div>
+            <div class="thumb">
+              ${
+                imgBefore
+                ? `<img src="${imgBefore}" alt="Sebelum">`
+                : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
+                     <path d="M20,90 L140,130 L280,60 L420,170 L580,110"
+                           fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+                   </svg>`
+              }
+            </div>
             <div class="cap">Sebelum — (placeholder/chart atau gambar sebelum)</div>
           </div>
           <div>
-            <div class="thumb">${imgAfter ? `<img src="${imgAfter}" alt="Sesudah">` : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet"><path d="M20,140 L210,150 L360,160 L580,110" fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/></svg>`}</div>
+            <div class="thumb">
+              ${
+                imgAfter
+                ? `<img src="${imgAfter}" alt="Sesudah">`
+                : `<svg width="100%" height="100%" viewBox="0 0 600 260" preserveAspectRatio="xMidYMid meet">
+                     <path d="M20,140 L210,150 L360,160 L580,110"
+                           fill="none" stroke="#22d3ee" stroke-width="3" stroke-linecap="round"/>
+                   </svg>`
+              }
+            </div>
             <div class="cap">Sesudah — (placeholder/chart atau gambar sesudah)</div>
           </div>
         </div>
@@ -1207,10 +1255,26 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
         <div class="flex" style="margin-top:12px">
           <div class="grow">
             <table class="meta">
-              <tr><td class="k">Entry</td><td class="v">${price(entry)}</td><td class="k">TP1 (harga)</td><td class="v">${price(tp1)}</td><td class="k">R1</td><td class="v ${r1===0?'':(r1>0?'pos':'neg')}">${r1}</td></tr>
-              <tr><td class="k">Stop Loss</td><td class="v">${price(sl)}</td><td class="k">TP2 (harga)</td><td class="v">${price(tp2)}</td><td class="k">R2</td><td class="v ${r2===0?'':(r2>0?'pos':'neg')}">${r2}</td></tr>
-              <tr><td class="k">Δ (Entry–SL)</td><td class="v">${price(d)}</td><td class="k">TP3 (harga)</td><td class="v">${price(tp3)}</td><td class="k">R3</td><td class="v ${r3===0?'':(r3>0?'pos':'neg')}">${r3}</td></tr>
-              <tr><td class="k">R (Net)</td><td class="v ${signClass(rnet)}">${rnet}</td><td class="k">Equity (sim)</td><td class="v">$${fmt(runEq)}</td><td class="k">P/L (sim)</td><td class="v ${signClass(runPnlUSD)}">${runPnlUSD>=0?'+':''}$${fmt(runPnlUSD)}</td></tr>
+              <tr>
+                <td class="k">Entry</td><td class="v">${price(entry)}</td>
+                <td class="k">TP1 (harga)</td><td class="v">${price(tp1)}</td>
+                <td class="k">R1</td><td class="v ${r1===0?'':(r1>0?'pos':'neg')}">${r1}</td>
+              </tr>
+              <tr>
+                <td class="k">Stop Loss</td><td class="v">${price(sl)}</td>
+                <td class="k">TP2 (harga)</td><td class="v">${price(tp2)}</td>
+                <td class="k">R2</td><td class="v ${r2===0?'':(r2>0?'pos':'neg')}">${r2}</td>
+              </tr>
+              <tr>
+                <td class="k">Δ (Entry–SL)</td><td class="v">${price(d)}</td>
+                <td class="k">TP3 (harga)</td><td class="v">${price(tp3)}</td>
+                <td class="k">R3</td><td class="v ${r3===0?'':(r3>0?'pos':'neg')}">${r3}</td>
+              </tr>
+              <tr>
+                <td class="k">R (Net)</td><td class="v ${signClass(rnet)}">${rnet}</td>
+                <td class="k">Equity (sim)</td><td class="v">$${fmt(runEq)}</td>
+                <td class="k">P/L (sim)</td><td class="v ${signClass(runPnlUSD)}">${runPnlUSD>=0?'+':''}$${fmt(runPnlUSD)}</td>
+              </tr>
             </table>
           </div>
           <div class="eval grow">
@@ -1222,16 +1286,24 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
     `;
   }).join('');
 
+  // ===== RETURN: tutup report-main sebelum footer/info dibuat =====
   return `<!doctype html>
-  <html lang="id"><head><meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${projectName} — Presentasi</title>
-  <style>${css}</style></head>
-  <body><div class="wrap">
-    ${header}
-    ${tradeCards || ''}
-    <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
-  </div></body></html>`;
+  <html lang="id">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>${projectName} — Presentasi</title>
+    <style>${css}</style>
+  </head>
+  <body>
+    <div class="wrap">
+      ${header}
+      ${tradeCards || ''}
+      </div><!-- /report-main -->
+      <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
+    </div>
+  </body>
+  </html>`;
 }
 
 /* =====================================================
