@@ -325,73 +325,14 @@ function refresh(){
 }
 
 /* ===== CRUD data ===== */
-function addTrade(obj){
-  const data = load();
-  data.push(obj);     // ← sudah benar
-  save(data);
-}
-
-
-// === RENDER TABEL (urut lama → baru; entry baru di bawah) ===
-function renderTrades(){
-  const tbody = document.getElementById('tradeList');
-  if (!tbody) return;
-  tbody.innerHTML = '';
-
-  // Ambil data dari storage versi kamu
-  const rows = load().slice().sort((a,b)=>{
-    const da = new Date(a?.setup_date || a?.createdAt || 0);
-    const db = new Date(b?.setup_date || b?.createdAt || 0);
-    if (!isNaN(da) && !isNaN(db)) return da - db;
-    const ia = (a?.id || '').toString();
-    const ib = (b?.id || '').toString();
-    return ia.localeCompare(ib);
-  });
-
-  for (const t of rows){
-    const tr = (typeof buildTradeRow === 'function')
-      ? buildTradeRow(t)
-      : document.createElement('tr'); // fallback aman
-    tbody.appendChild(tr); // → baris baru selalu di bawah
-  }
-
-  // opsional: panggil kalkulasi jika ada
-  if (typeof updateTotals === 'function') updateTotals(rows);
-  if (typeof updateProbabilities === 'function') updateProbabilities(rows);
-  if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
-}
+function addTrade(obj){ const data = load(); data.unshift(obj); save(data); }
+function updateTrade(id, patch){ const data = load(); const i = data.findIndex(x=>x.id===id); if(i<0) return; data[i] = {...data[i], ...patch}; save(data); }
+function deleteTrade(id){ save(load().filter(x=>x.id!==id)); }
 
 /* ===== edit modal ===== */
 function openEdit(id){
   const t = load().find(x=>x.id===id); if(!t) return;
   ensureSymbolDropdownForEdit();
-data.sort((a,b)=> new Date(a.setup_date) - new Date(b.setup_date));
-nebgapa fungsi setetlah isi data tidak langsung scrol kebawah
-
-  // Ambil data dari storage versi kamu
-  const rows = load().slice().sort((a,b)=>{
-    const da = new Date(a?.setup_date || a?.createdAt || 0);
-    const db = new Date(b?.setup_date || b?.createdAt || 0);
-    if (!isNaN(da) && !isNaN(db)) return da - db;
-    const ia = (a?.id || '').toString();
-    const ib = (b?.id || '').toString();
-    return ia.localeCompare(ib);
-  });
-
-  for (const t of rows){
-    const tr = (typeof buildTradeRow === 'function')
-      ? buildTradeRow(t)
-      : document.createElement('tr'); // fallback aman
-    tbody.appendChild(tr); // → baris baru selalu di bawah
-  }
-
-  // opsional: panggil kalkulasi jika ada
-  if (typeof updateTotals === 'function') updateTotals(rows);
-  if (typeof updateProbabilities === 'function') updateProbabilities(rows);
-  if (typeof updateSummaryBoxes === 'function') updateSummaryBoxes(rows);
-}
-
-
 
   // isi form
   editForm.id.value = id;
@@ -400,7 +341,6 @@ nebgapa fungsi setetlah isi data tidak langsung scrol kebawah
   editForm.side.value = t.side || 'LONG';
   editForm.entry_price.value = t.entry_price ?? 0;
   editForm.stop_loss.value  = t.stop_loss  ?? 0;
-coba cek apa sudah seperti ini
 
   // gambar (base64)
   setImagePreview('before', t.img_before_data || '');
@@ -410,9 +350,6 @@ coba cek apa sudah seperti ini
   editModal.classList.remove('hidden'); editModal.classList.add('flex');
 }
 function closeEdit(){ editModal.classList.add('hidden'); editModal.classList.remove('flex'); }
-  // ✅ inject kolom URL setiap kali modal dibuka (agar tidak hilang)
-  injectUrlBarUnder(document.getElementById('dropBefore'), 'before');//ini untuk menempelkan url agar aktif
-  injectUrlBarUnder(document.getElementById('dropAfter'),  'after');
 
 /* ===== projects modal ===== */
 function renderProjects(){
@@ -1152,51 +1089,10 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
 }
 
 /* =====================================================
-   Gambar: preview, drag & drop, lightbox + (BARU) PASTE / URL LINK
+   Gambar: preview, drag & drop, lightbox
    ===================================================== */
 
-const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB aman untuk localStorage
-let lastImgKind = 'before'; // target default untuk paste URL
-
-function isLikelyImageURL(t){
-  try{
-    if(!t) return false;
-    if(t.startsWith('data:image/')) return true;
-    const u = new URL(t);
-    return ['http:','https:'].includes(u.protocol) && /\.(png|jpe?g|webp|gif|bmp|svg)(\?.*)?$/i.test(u.pathname);
-  }catch{ return false; }
-}
-
-async function blobToDataURL(blob){
-  return await new Promise((resolve,reject)=>{
-    const fr = new FileReader();
-    fr.onload = ()=>resolve(fr.result);
-    fr.onerror = reject;
-    fr.readAsDataURL(blob);
-  });
-}
-
-async function fetchToDataURL(url){
-  try{
-    const res = await fetch(url, { mode:'cors' });
-    if(!res.ok) throw new Error('HTTP '+res.status);
-    const blob = await res.blob();
-    if (blob.size > MAX_IMG_BYTES){
-      alert('Ukuran gambar dari URL terlalu besar (> ~3MB). Gunakan gambar yang lebih kecil.');
-      return '';
-    }
-    return await blobToDataURL(blob);
-  }catch(err){
-    console.error('Gagal fetch URL gambar:', err);
-    alert('Tidak bisa memuat link gambar (mungkin CORS diproteksi atau link tidak valid).');
-    return '';
-  }
-}
-
-async function urlToBase64Smart(url){
-  if(url.startsWith('data:image/')) return url; // sudah base64
-  return await fetchToDataURL(url);
-}
+const MAX_IMG_BYTES = 3 * 1024 * 1024; // ~3MB aman untuk localStorage, saranku <300KB ideal
 
 async function fileToBase64(file){
   if (!file) return '';
@@ -1254,24 +1150,14 @@ async function handlePickFile(inputEl, kind){
 
 function setupDragDrop(areaEl, inputEl, kind){
   if (!areaEl || !inputEl) return;
-  ['dragenter','dragover'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.add('drop-active'); lastImgKind = kind; }));
+  ['dragenter','dragover'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.add('drop-active'); }));
   ['dragleave','dragend','drop'].forEach(ev=> areaEl.addEventListener(ev, e=>{ e.preventDefault(); e.stopPropagation(); areaEl.classList.remove('drop-active'); }));
   areaEl.addEventListener('drop', async e=>{
-    const dt = e.dataTransfer; if(!dt) return;
-    const file = dt.files?.[0];
-    if(file){
-      const b64 = await fileToBase64(file);
-      if (b64) setImagePreview(kind, b64);
-      return;
-    }
-    // Text/URL drop
-    const t = dt.getData('text');
-    if(isLikelyImageURL(t)){
-      const b64 = await urlToBase64Smart(t.trim());
-      if (b64) setImagePreview(kind, b64);
-    }
+    const file = e.dataTransfer?.files?.[0]; if (!file) return;
+    const b64 = await fileToBase64(file);
+    if (b64) setImagePreview(kind, b64);
   });
-  areaEl.addEventListener('click', ()=> { lastImgKind = kind; inputEl.click(); });
+  areaEl.addEventListener('click', ()=> inputEl.click());
 }
 
 /* lightbox */
@@ -1285,8 +1171,8 @@ function closeLightbox(){
   imgViewerImg.src = '';
 }
 
-editImgBefore?.addEventListener('change', ()=> { lastImgKind='before'; handlePickFile(editImgBefore,'before'); });
-editImgAfter?.addEventListener('change',  ()=> { lastImgKind='after';  handlePickFile(editImgAfter,'after'); });
+editImgBefore?.addEventListener('change', ()=> handlePickFile(editImgBefore,'before'));
+editImgAfter?.addEventListener('change',  ()=> handlePickFile(editImgAfter,'after'));
 btnClearImgBefore?.addEventListener('click', ()=> setImagePreview('before',''));
 btnClearImgAfter?.addEventListener('click',  ()=> setImagePreview('after',''));
 btnViewImgBefore?.addEventListener('click',   ()=> openLightbox(editImgBeforeData.value));
@@ -1297,133 +1183,6 @@ imgViewer?.addEventListener('click', e=>{ if(e.target===imgViewer) closeLightbox
 // drag-n-drop on labels
 setupDragDrop(dropBefore, editImgBefore, 'before');
 setupDragDrop(dropAfter,  editImgAfter,  'after');
-
-/* ===== (BARU) — Tambah field URL untuk gambar + Paste global ===== */
-function injectUrlBarUnder(areaEl, kind){
-  if(!areaEl) return;
-  const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
-  if (document.getElementById(id)) return; // sudah dibuat
-
-  const wrap = document.createElement('div');
-  wrap.className = 'mt-2 flex gap-2';
-  wrap.innerHTML = `
-    <input id="${id}" type="url" placeholder="Tempel link gambar (https://… atau data:image/…)" class="flex-1 rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm" />
-    <button type="button" class="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-500">Muat</button>
-  `;
-  areaEl.insertAdjacentElement('afterend', wrap);
-
-  const input = wrap.querySelector('input');
-  const btn   = wrap.querySelector('button');
-
-  const loader = async () => {
-    const url = (input.value||'').trim();
-    if (!isLikelyImageURL(url)) { alert('Link tidak valid. Pakai URL file gambar langsung.'); return; }
-    const b64 = await urlToBase64Smart(url);
-    if (b64) setImagePreview(kind, b64);
-  };
-
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
-  btn.addEventListener('click', loader);
-
-  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-}
-
-function injectUrlBarUnder(areaEl, kind){
-  if(!areaEl) return;
-  const id = kind==='before' ? 'editImgBeforeUrl' : 'editImgAfterUrl';
-  if (document.getElementById(id)) return; // sudah ada
-
-  // ambil kelas dari input angka agar tampilannya identik
-  const mimicClass =
-    (form?.entry_price?.className || editForm?.entry_price?.className) ||
-    'w-full rounded-xl border border-slate-300 bg-slate-50 text-slate-900 ' +
-    'px-3 py-2 text-sm placeholder-slate-500 focus:outline-none ' +
-    'focus:ring-2 focus:ring-blue-500 focus:border-transparent ' +
-    'dark:bg-slate-900 dark:border-slate-700 dark:text-slate-100';
-
-  const wrap = document.createElement('div');
-  wrap.className = 'mt-2 flex items-center gap-2';
-
-  wrap.innerHTML = `
-    <input id="${id}" type="url"
-      placeholder="Tempel link gambar (https://… atau data:image/…)"
-      class="${mimicClass}" />
-    <button type="button"
-      class="h-[38px] px-3 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 focus:ring-2 focus:ring-blue-500">
-      Muat
-    </button>
-  `;
-  areaEl.insertAdjacentElement('afterend', wrap);
-
-  const input = wrap.querySelector('input');
-  const btn   = wrap.querySelector('button');
-
-  const loader = async () => {
-    const url = (input.value||'').trim();
-    if (!isLikelyImageURL(url)) { alert('Masukkan URL file gambar (.png/.jpg/.webp) atau data:image/…'); input.focus(); return; }
-    const b64 = await urlToBase64Smart(url);
-    if (b64) setImagePreview(kind, b64);
-  };
-
-  input.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); loader(); }});
-  btn.addEventListener('click', loader);
-
-  // agar paste/link diarahkan ke area ini
-  input.addEventListener('focus', ()=>{ lastImgKind = kind; });
-
-  // samakan tinggi input jika ada referensi
-  const ref = form?.entry_price || editForm?.entry_price;
-  if (ref) {
-    const h = getComputedStyle(ref).height;
-    if (h && h !== 'auto') input.style.height = h;
-  }
-}
-
-// Paste global: dukung gambar langsung & link gambar (auto-load)
-window.addEventListener('paste', async (e) => {
-  const dt = e.clipboardData || window.clipboardData;
-  if (!dt) return;
-
-  // 1) Jika yang ditempel adalah GAMBAR (TradingView -> Salin gambar)
-  const items = dt.items || [];
-  for (const item of items) {
-    if (item.type && item.type.startsWith('image/')) {
-      const file = item.getAsFile?.();
-      if (file) {
-        const b64 = await fileToBase64(file);
-        if (b64) setImagePreview(lastImgKind, b64);
-        e.preventDefault();   // cegah tempel bitmap jadi teks
-        return;
-      }
-    }
-  }
-
-  // 2) Jika fokus di kolom URL kita, biarkan teks menempel lalu otomatis muat
-  const el = document.activeElement;
-  const isUrlInput = el && (el.id === 'editImgBeforeUrl' || el.id === 'editImgAfterUrl');
-  if (isUrlInput) {
-    // debounce ringan supaya tidak dobel request
-    clearTimeout(window.__urlPasteTimer__);
-    window.__urlPasteTimer__ = setTimeout(async () => {
-      const url = (el.value || '').trim();
-      if (isLikelyImageURL(url)) {
-        const kind = el.id === 'editImgBeforeUrl' ? 'before' : 'after';
-        const b64 = await urlToBase64Smart(url);
-        if (b64) setImagePreview(kind, b64);
-      }
-    }, 60);
-    return; // jangan preventDefault; biar teks masuk ke input
-  }
-
-  // 3) Fallback: jika clipboard berisi TEKS URL gambar & bukan di kolom URL
-  const text = dt.getData?.('text')?.trim() || '';
-  if (text && isLikelyImageURL(text)) {
-    const b64 = await urlToBase64Smart(text);
-    if (b64) setImagePreview(lastImgKind, b64);
-    e.preventDefault();
-  }
-});
-
 
 /* ===== Init ===== */
 (function init(){
