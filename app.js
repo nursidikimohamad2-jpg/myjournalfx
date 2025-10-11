@@ -1432,26 +1432,147 @@ function buildPresentationHTML({ projectName, createdAt, trades, stats }){
   `;
 
   // ==== RETURN HTML ====
-  return `<!doctype html>
-  <html lang="id">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>${projectName} — Presentasi</title>
-    <style>${css}</style>
-  </head>
-  <body>
-    <div class="wrap">
-      ${header}
-      ${tradeCards || ''}
-      </div><!-- /report-main -->
-      <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
-      ${fab}
+return `<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${projectName} — Presentasi</title>
+  <style>${css}</style>
+</head>
+<body>
+  <div class="wrap">
+    ${header}
+    ${tradeCards || ''}
+    </div><!-- /report-main -->
+
+    <div class="muted" style="text-align:right;margin-top:10px">Dibuat: ${createdAt}</div>
+    ${fab}
+
+    <!-- === [BARU] Annotation Canvas (overlay seluruh halaman) === -->
+    <canvas id="annotCanvas"></canvas>
+
+    <!-- === [BARU] Toolbar anotasi === -->
+    <div class="annot-toolbar">
+      <button id="annotToggle">Pensil: OFF</button>
+      <label>Warna <input id="annotColor" type="color" value="#22d3ee"></label>
+      <label>Tebal <input id="annotSize" type="range" min="1" max="16" value="3"></label>
+      <button id="annotUndo">Undo</button>
+      <button id="annotClear">Clear</button>
+      <button id="annotSave">Save PNG</button>
     </div>
 
-    ${lightbox}
-  </body>
-  </html>`;
+    <!-- === [STEP 3 nanti] Script anotasi akan ditempel di sini === -->
+<!-- [BARU] Script Anotasi -->
+<script>
+(function(){
+  const cvs   = document.getElementById('annotCanvas');
+  const ctx   = cvs.getContext('2d');
+  const btn   = document.getElementById('annotToggle');
+  const col   = document.getElementById('annotColor');
+  const size  = document.getElementById('annotSize');
+  const undo  = document.getElementById('annotUndo');
+  const clear = document.getElementById('annotClear');
+  const save  = document.getElementById('annotSave');
+
+  let active   = false;   // pensil ON/OFF
+  let drawing  = false;
+  let history  = [];      // untuk Undo
+  const MAX_STACK = 30;
+
+  function fitCanvas(){
+    // Full-screen overlay, hi-DPI aware
+    const dpr = window.devicePixelRatio || 1;
+    cvs.width  = Math.round(innerWidth * dpr);
+    cvs.height = Math.round(innerHeight * dpr);
+    cvs.style.width  = innerWidth + 'px';
+    cvs.style.height = innerHeight + 'px';
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+
+  function pushState(){
+    // Simpan snapshot (bisa besar; batasi stack)
+    try{
+      if (history.length >= MAX_STACK) history.shift();
+      history.push(cvs.toDataURL('image/png'));
+    }catch(_){ /* abaikan jika gagal karena memori */ }
+  }
+
+  function startDraw(x,y){
+    drawing = true;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = col.value;
+    ctx.lineWidth   = +size.value;
+    ctx.beginPath();
+    ctx.moveTo(x,y);
+  }
+  function moveDraw(x,y){
+    if(!drawing) return;
+    ctx.lineTo(x,y);
+    ctx.stroke();
+  }
+  function endDraw(){
+    if(!drawing) return;
+    drawing = false;
+    ctx.closePath();
+    pushState();
+  }
+
+  // Pointer events (mouse + touch + pen)
+  cvs.addEventListener('pointerdown', e=>{
+    if(!active) return;
+    cvs.setPointerCapture(e.pointerId);
+    startDraw(e.offsetX, e.offsetY);
+  });
+  cvs.addEventListener('pointermove', e=>{
+    if(!active) return;
+    moveDraw(e.offsetX, e.offsetY);
+  });
+  ['pointerup','pointercancel','pointerleave'].forEach(ev=> cvs.addEventListener(ev, endDraw));
+
+  // Toolbar
+  btn.addEventListener('click', ()=>{
+    active = !active;
+    btn.textContent = 'Pensil: ' + (active ? 'ON' : 'OFF');
+    cvs.classList.toggle('on', active);
+  });
+
+  undo.addEventListener('click', ()=>{
+    if(!history.length) return;
+    // buang state terakhir (current)
+    history.pop();
+    const prev = history[history.length-1];
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    if(prev){
+      const img = new Image();
+      img.onload = ()=> ctx.drawImage(img, 0, 0, cvs.width, cvs.height);
+      img.src = prev;
+    }
+  });
+
+  clear.addEventListener('click', ()=>{
+    ctx.clearRect(0,0,cvs.width,cvs.height);
+    history = [];
+  });
+
+  save.addEventListener('click', ()=>{
+    const a = document.createElement('a');
+    a.download = 'annotation.png';
+    a.href = cvs.toDataURL('image/png');
+    a.click();
+  });
+
+  window.addEventListener('resize', fitCanvas, { passive:true });
+  fitCanvas();
+  pushState();   // state awal (kanvas kosong)
+})();
+</script>
+
+  </div><!-- /.wrap -->
+</body>
+</html>`;
+
 }
 
 /* =====================================================
